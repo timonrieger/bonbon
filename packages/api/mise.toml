@@ -1,0 +1,23 @@
+[env]
+_.python.venv = { path = ".venv" }
+
+[deps.uv]
+auto = true
+run = "uv sync --all-groups ${CI:+--locked}"
+
+[tasks.install]
+run = "uv sync --all-groups ${CI:+--locked}"
+description = "Install Python dependencies; asserts the lockfile with --locked under CI"
+
+[tasks.test]
+run = "uv run pytest"
+description = "Run backend tests (AWS is mocked with moto, no account needed)"
+
+[tasks.openapi]
+run = "uv run python -m bonbon.openapi > openapi.json"
+description = "Write openapi.json from the Powertools routes"
+
+# SAM's pip builder reads src/requirements.txt (generated, gitignored).
+[tasks.requirements]
+run = "uv export --frozen --no-dev --no-emit-project --no-hashes --quiet -o src/requirements.txt"
+description = "Export runtime dependencies for 'sam build'"

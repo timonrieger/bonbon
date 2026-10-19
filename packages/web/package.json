@@ -1,0 +1,32 @@
+{
+  "name": "@bonbon/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "client": "oazapfts --optimistic --argumentStyle=object --useEnumType ../api/openapi.json src/api/client.gen.ts"
+  },
+  "dependencies": {
+    "@aws-amplify/ui-react": "^6.15.7",
+    "@oazapfts/runtime": "^1.2.0",
+    "@tanstack/react-query": "^5.104.4",
+    "aws-amplify": "^6.22.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.4.0",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oazapfts": "^7.5.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

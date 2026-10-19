@@ -1,0 +1,72 @@
+monorepo_root = true
+
+[monorepo]
+config_roots = ["packages/*"]
+
+[settings]
+experimental = true # required for [deps] and monorepo tasks
+
+[tools]
+python = "3.14.8"
+uv = "0.13.1"
+node = "24.22.0"
+pnpm = "12.14.0"
+aws-cli = "2.38.1"
+"pipx:aws-sam-cli" = "1.169.0"
+
+[env]
+# The Learner Lab only works in us-east-1.
+AWS_REGION = "us-east-1"
+AWS_DEFAULT_REGION = "us-east-1"
+SAM_CLI_TELEMETRY = "0"
+
+[tasks.setup]
+run = ["mise run install", "uvx prek install"]
+description = "First-time setup: install dependencies and the git pre-commit hooks"
+
+[tasks.install]
+depends = ["//packages/api:install", "//packages/web:install"]
+alias = "i"
+description = "Install dependencies for all packages (alias: 'i'); asserts the lockfiles under CI"
+
+[tasks.lint]
+depends = ["install"]
+run = "uvx prek run --all-files"
+description = "Run all pre-commit hooks on the whole repo"
+
+[tasks.test]
+depends = ["//packages/api:test"]
+description = "Run all tests"
+
+[tasks.check]
+depends = ["lint", "test"]
+description = "Everything CI checks. Run before every commit and PR"
+
+[tasks.generate]
+run = [{ task = "//packages/api:openapi" }, { task = "//packages/web:client" }]
+description = "Regenerate openapi.json and the frontend API client from the Python routes"
+
+[tasks."stack:up"]
+depends = ["//packages/api:requirements"]
+run = [
+  "sam build --cached --parallel",
+  "sam deploy --config-env dev",
+  { task = "env" },
+]
+description = "Deploy (or update) your personal dev stack 'bonbon-dev' and write packages/web/.env.local"
+
+[tasks.sync]
+depends = ["//packages/api:requirements"]
+run = "sam sync --config-env dev --watch"
+raw = true
+description = "Watch for changes and push them to your dev stack within seconds"
+
+[tasks.dev]
+depends = ["sync", "//packages/web:dev"]
+description = "Local dev: frontend on http://localhost:5173 + live sync of the backend to your dev stack"
+
+[tasks."deploy:prod"]
+depends = ["//packages/api:requirements"]
+confirm = "Deploy to PROD (stack bonbon-prod in the current AWS account)?"
+run = ["sam build --cached --parallel", "sam deploy --config-env prod"]
+description = "Deploy the production stack. Only the infra owner runs this, from main"

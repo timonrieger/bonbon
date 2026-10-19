@@ -1,0 +1,33 @@
+[project]
+name = "bonbon"
+version = "0.1.0"
+description = "Bonbon backend: Lambda functions behind API Gateway"
+requires-python = ">=3.14"
+dependencies = [
+  "aws-lambda-powertools>=3.36.0",
+  "pydantic>=2.14.1",
+]
+
+[dependency-groups]
+dev = [
+  # boto3 ships with the Lambda runtime, so it is only a dev dependency.
+  "boto3>=1.43.114",
+  "moto[dynamodb]>=5.2.4",
+  "pytest>=9.1.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+
+# Also applied to the mise-tasks/ scripts via the ruff hook in .pre-commit-config.yaml.
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "PLW"]

@@ -1,0 +1,41 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Dev: start",
+      "detail": "Frontend on localhost:5173 + live sync of the backend to your dev stack",
+      "type": "shell",
+      "command": "mise run dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Check (before commit)",
+      "type": "shell",
+      "command": "mise run check",
+      "problemMatcher": [],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "AWS: paste Learner Lab credentials",
+      "type": "shell",
+      "command": "mise run creds",
+      "problemMatcher": [],
+      "presentation": { "focus": true }
+    },
+    {
+      "label": "AWS: deploy my dev stack",
+      "type": "shell",
+      "command": "mise run stack:up",
+      "problemMatcher": []
+    },
+    {
+      "label": "API: regenerate frontend client",
+      "type": "shell",
+      "command": "mise run generate",
+      "problemMatcher": []
+    }
+  ]
+}

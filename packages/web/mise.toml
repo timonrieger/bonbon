@@ -1,0 +1,23 @@
+[deps.pnpm]
+auto = true
+run = "pnpm install ${CI:+--frozen-lockfile}"
+
+[tasks.install]
+run = "pnpm install ${CI:+--frozen-lockfile}"
+description = "Install frontend dependencies; asserts the lockfile with --frozen-lockfile under CI"
+
+[tasks.dev]
+run = "pnpm dev"
+description = "Run the Vite dev server on http://localhost:5173"
+
+[tasks.typecheck]
+run = "pnpm typecheck"
+description = "Type-check the frontend"
+
+[tasks.build]
+run = "pnpm build"
+description = "Build the static site into dist/"
+
+[tasks.client]
+run = "pnpm client"
+description = "Generate src/api/client.gen.ts from packages/api/openapi.json"

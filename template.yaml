@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Bonbon, receipt digitization for shared households
+
+# Learner Lab rules (see docs/decisions/0001-learner-lab-constraints.md):
+# - NEVER create IAM roles or policies (no AWS::IAM::*, no `Policies:` on functions).
+#   Every function must set `Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole`
+#   (SAM does not allow Role in Globals; mise-tasks/check-no-iam.py enforces this).
+# - Region is always us-east-1.
+
+Parameters:
+  Stage:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: dev
+
+Globals:
+  Function:
+    Runtime: python3.14
+    CodeUri: packages/api/src/
+    Timeout: 10
+    MemorySize: 512
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Table
+        POWERTOOLS_SERVICE_NAME: bonbon
+        STAGE: !Ref Stage
+
+Resources:
+  # Single table for all data, see docs/architecture.md#data-model.
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub bonbon-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      SSESpecification:
+        SSEEnabled: true
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub bonbon-${Stage}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: api
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Authorization,Content-Type'"
+        AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+      Auth:
+        DefaultAuthorizer: Cognito
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          Cognito:
+            UserPoolArn: !GetAtt UserPool.Arn
+      # Without CORS headers on errors, the browser shows a 401/403 as a CORS error.
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Authorization,Content-Type'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Authorization,Content-Type'"
+
+  # One function per domain; routes inside it are handled by Powertools.
+  # Every route in the Python router needs a matching event here.
+  HouseholdsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.households.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Events:
+        CreateHousehold:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households
+            Method: POST
+        GetHousehold:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

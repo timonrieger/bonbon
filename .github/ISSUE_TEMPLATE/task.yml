@@ -1,0 +1,32 @@
+name: Task
+description: A piece of work for the project board
+body:
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Feature
+      options:
+        - 01 Upload & processing
+        - 02 Extraction & categorization
+        - 03 Dashboard
+        - 04 Households
+        - 05 Account deletion
+        - Infrastructure / tooling
+        - Documentation / presentation
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should work when this is done?
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Concrete, checkable acceptance criteria. Copy from docs/features/ where possible.
+      value: "- [ ] "
+    validations:
+      required: true

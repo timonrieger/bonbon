@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Build output
+dist/
+.aws-sam/
+packages/api/src/requirements.txt
+
+# Local config and secrets
+.env
+.env.local
+*.local
+
+# Tooling
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.tsbuildinfo
+.DS_Store
