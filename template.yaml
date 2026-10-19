@@ -5,7 +5,7 @@ Description: Bonbon, receipt digitization for shared households
 # Learner Lab rules (see docs/decisions/0001-learner-lab-constraints.md):
 # - NEVER create IAM roles or policies (no AWS::IAM::*, no `Policies:` on functions).
 #   Every function must set `Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole`
-#   (SAM does not allow Role in Globals; mise-tasks/check-no-iam.py enforces this).
+#   (SAM does not allow Role in Globals; .mise/tasks/check-no-iam.py enforces this).
 # - Region is always us-east-1.
 
 Parameters:

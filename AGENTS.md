@@ -23,7 +23,7 @@ Everything runs through mise. Never call `pip`, `npm`, `sam deploy` etc. directl
 - `packages/web/`: React frontend ([AGENTS.md](packages/web/AGENTS.md))
 - `template.yaml`: all AWS resources (SAM). `samconfig.toml`: deploy settings
 - `docs/`: architecture, feature specs, decisions, guides ([index](docs/README.md))
-- `mise-tasks/`: mise tasks written as standalone uv scripts (`mise run creds`, `mise run env`, …)
+- `.mise/`: tool versions and tasks (`config.toml`), plus script tasks in `tasks/` written as standalone uv scripts
 
 ## Hard rules
 

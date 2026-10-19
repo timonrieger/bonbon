@@ -24,7 +24,7 @@ build-backend = "uv_build"
 testpaths = ["tests"]
 pythonpath = ["tests"]
 
-# Also applied to the mise-tasks/ scripts via the ruff hook in .pre-commit-config.yaml.
+# Also applied to the .mise/tasks/ scripts via the ruff hook in .pre-commit-config.yaml.
 [tool.ruff]
 line-length = 100
 target-version = "py314"

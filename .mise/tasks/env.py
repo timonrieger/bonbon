@@ -37,6 +37,6 @@ env = {
     "VITE_USER_POOL_ID": outputs["UserPoolId"],
     "VITE_USER_POOL_CLIENT_ID": outputs["UserPoolClientId"],
 }
-path = Path(__file__).resolve().parent.parent / "packages" / "web" / ".env.local"
+path = Path(__file__).resolve().parents[2] / "packages" / "web" / ".env.local"
 path.write_text("".join(f"{k}={v}\n" for k, v in env.items()))
 print(f"Wrote {path}")
