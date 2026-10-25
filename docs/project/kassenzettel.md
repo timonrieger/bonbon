@@ -488,34 +488,13 @@ aufgespalten wird. Jedes Teammitglied fokussiert sich auf einen
 spezialisierten Bereich und vertritt einen definierten zweiten, um
 Engpässe zu vermeiden.
 
-  ------------------------------------------------------------------------------
-  Person   Hauptverantwortung                              Stellvertretung
-  -------- ----------------------------------------------- ---------------------
-  Person 1 **Cloud-Infrastruktur & CI/CD:**                Backend (Async & KI)
-           SAM/CloudFormation, S3 (Buckets & Policies),
-           Cognito, IAM (LabRole), GitHub Actions
-
-  Person 2 **Backend (Core API & Datenmodell):** API       Cloud-Infrastruktur &
-           Gateway, synchrone Lambda-Funktionen            CI/CD
-           (Dashboard, Haushalte), DynamoDB-Design und
-           Aggregation der Monatswerte (DynamoDB Streams)
-
-  Person 3 **Backend (Async & KI):** SQS, Worker-Lambdas,  Backend (Core API)
-           Anbindung Amazon Textract / externe KI-API,
-           SNS-Benachrichtigungen, Lösch-Worker für die
-           Kontolöschung
-
-  Person 4 **Frontend (Basis & Upload):** React-App Setup, Frontend (Dashboard)
-           Authentifizierungs-UI, Datei-Upload per
-           Presigned URL, Korrekturansicht, Dialog zur
-           Kontolöschung
-
-  Person 5 **Frontend (Dashboard) & QS:**                  Frontend (Basis)
-           Haushaltsverwaltung, Dashboard-Logik,
-           CloudWatch-Monitoring, Lasttest und Nachweis
-           der Qualitätsziele, übergreifendes Testing &
-           Dokumentation
-  ------------------------------------------------------------------------------
+| Person | Hauptverantwortung | Stellvertretung |
+|---|---|---|
+| [@timonrieger](https://github.com/timonrieger) | **Cloud-Infrastruktur & CI/CD:** SAM/CloudFormation, S3 (Buckets & Policies), Cognito, IAM (LabRole), GitHub Actions | Backend (Async & KI) |
+| [@nosernoel](https://github.com/nosernoel) | **Backend (Core API & Datenmodell):** API Gateway, synchrone Lambda-Funktionen (Dashboard, Haushalte), DynamoDB-Design und Aggregation der Monatswerte (DynamoDB Streams) | Cloud-Infrastruktur & CI/CD |
+| [@Dam-Mil](https://github.com/Dam-Mil) | **Backend (Async & KI):** SQS, Worker-Lambdas, Anbindung Amazon Textract / externe KI-API, SNS-Benachrichtigungen, Lösch-Worker für die Kontolöschung | Backend (Core API) |
+| [@RR02-rr](https://github.com/RR02-rr) | **Frontend (Basis & Upload):** React-App Setup, Authentifizierungs-UI, Datei-Upload per Presigned URL, Korrekturansicht, Dialog zur Kontolöschung | Frontend (Dashboard) |
+| [@schmid277](https://github.com/schmid277) | **Frontend (Dashboard) & QS:** Haushaltsverwaltung, Dashboard-Logik, CloudWatch-Monitoring, Lasttest und Nachweis der Qualitätsziele, übergreifendes Testing & Dokumentation | Frontend (Basis) |
 
 **Zusammenarbeit:**
 
