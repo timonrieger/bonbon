@@ -1,5 +1,5 @@
 name: Task
-description: A piece of work for the project board
+description: A piece of work from docs/features/
 body:
   - type: dropdown
     id: feature

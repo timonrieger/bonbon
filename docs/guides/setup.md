@@ -24,7 +24,7 @@ mise run setup    # dependencies + git hooks
 
 Do this at the start of every lab session (credentials expire after about 4 hours):
 
-1. In AWS Academy: **Start Lab**, wait for the green dot.
+1. Open the Learner Lab: log in at <https://awsacademy.instructure.com> (your AWS Academy account from the course invitation, not an AWS login) → **Courses** → the Learner Lab course → **Modules** → **Launch AWS Academy Learner Lab**. Click **Start Lab** and wait for the green dot. Clicking **AWS** next to the dot opens the AWS console.
 2. **AWS Details** → **AWS CLI: Show** → copy the whole block starting with `[default]`.
 3. VS Code: `Terminal → Run Task… → AWS: paste Learner Lab credentials`, paste, then press Enter on an empty line.
 4. Check: `aws sts get-caller-identity` prints your account.

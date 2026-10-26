@@ -2,7 +2,7 @@
 
 ## The loop
 
-1. **Pick an issue** on the project board. If there isn't one, create it with the "Task" template and copy the acceptance criteria from `docs/features/`.
+1. **Pick a task** from your area's spec in `docs/features/` (open checkboxes = open work). For work that needs discussing or handing over, open a GitHub issue with the "Task" template and copy the acceptance criteria in.
 2. **Branch:** `git switch -c feat/short-name` (or `fix/…`, `docs/…`).
 3. **Work with your agent** (see below).
 4. **Check:** `mise run check` (or `Terminal → Run Task… → Check`). Fix until it passes.
