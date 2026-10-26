@@ -23,6 +23,7 @@ Globals:
     Environment:
       Variables:
         TABLE_NAME: !Ref Table
+        RECEIPTS_BUCKET: !Ref ReceiptsBucket
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
 
@@ -106,6 +107,120 @@ Resources:
             RestApiId: !Ref Api
             Path: /households/{household_id}
             Method: GET
+
+  # Receipt photos and PDFs. Uploaded by the browser via presigned URL, keys built in
+  # bonbon/receipts/storage.py. Every new object becomes an SQS message for the worker.
+  ReceiptsBucket:
+    Type: AWS::S3::Bucket
+    # S3 checks the queue policy when the notification is created.
+    DependsOn: ReceiptsQueuePolicy
+    Properties:
+      # Fixed name so the queue policy can reference it without a circular dependency.
+      BucketName: !Sub bonbon-receipts-${Stage}-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: ["*"]
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: ["*"]
+            MaxAge: 3600
+      LifecycleConfiguration:
+        Rules:
+          - Id: glacier-ir-after-30-days
+            Status: Enabled
+            Transitions:
+              - { StorageClass: GLACIER_IR, TransitionInDays: 30 }
+          - Id: delete-unprocessed-after-7-days
+            Status: Enabled
+            TagFilters:
+              - { Key: status, Value: pending }
+            ExpirationInDays: 7
+          - Id: abort-incomplete-multipart-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt ReceiptsQueue.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - { Name: prefix, Value: households/ }
+
+  ReceiptsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ReceiptsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt ReceiptsBucket.Arn
+              - !Sub ${ReceiptsBucket.Arn}/*
+            Condition:
+              Bool: { aws:SecureTransport: false }
+
+  ReceiptsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-receipts-${Stage}
+      # At least 6 x the worker timeout (AWS guidance for Lambda event sources).
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ReceiptsDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ReceiptsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-receipts-dlq-${Stage}
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum
+
+  # A resource policy on the queue, not an IAM policy, so it is allowed in the Learner Lab.
+  ReceiptsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref ReceiptsQueue]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: s3.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: !GetAtt ReceiptsQueue.Arn
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub arn:aws:s3:::bonbon-receipts-${Stage}-${AWS::AccountId}
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  ProcessReceiptFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.process_receipt.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      # Keeps Textract below its rate limit (5 calls/s); SQS buffers the rest.
+      ReservedConcurrentExecutions: 10
+      Events:
+        ReceiptUploaded:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ReceiptsQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
 
 Outputs:
   ApiUrl:
