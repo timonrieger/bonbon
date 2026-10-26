@@ -24,8 +24,10 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway, DynamoDB table | scaffolded | @timonrieger, @nosernoel |
 | Households API (create, get) | scaffolded (reference pattern) | @nosernoel |
-| S3 bucket, presigned upload | planned | @timonrieger, @RR02-rr |
-| SQS + DLQ, worker, Textract | planned | @Dam-Mil |
+| S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
+| Presigned upload endpoint | planned | @timonrieger, @RR02-rr |
+| SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
+| Worker logic: Textract, categorization, status | planned | @Dam-Mil |
 | DynamoDB Streams aggregation | planned | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
@@ -36,9 +38,9 @@ Update the status column when something lands.
 
 ## Upload flow
 
-1. Frontend asks the API for a presigned URL. The API creates the receipt id and puts it in the S3 key.
+1. Frontend asks the API for a presigned URL. The API creates the receipt id and puts it in the S3 key: `households/<householdId>/receipts/<receiptId>` (built by `bonbon/receipts/storage.py`).
 2. Frontend uploads directly to S3. The request ends there.
-3. S3 event → SQS → worker. The worker switches status `uploaded → processing` with a conditional write, so a duplicate delivery is dropped.
+3. S3 event (keys under `households/`) → SQS → worker, one message at a time, max 10 workers in parallel. The worker switches status `uploaded → processing` with a conditional write, so a duplicate delivery is dropped.
 4. Worker calls Textract, categorizes items by keyword rules, writes receipt and items, sets `done`.
 5. SNS notifies the user. The frontend polls the status.
 6. After 3 failed attempts the message goes to the dead-letter queue.

@@ -15,7 +15,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - [ ] Failed receipts land in the dead-letter queue after 3 attempts
 - [ ] Worker is idempotent (conditional status write; a duplicate delivery is dropped)
 - [ ] Same file uploaded twice in a household is detected via file hash → `duplicate`
-- [ ] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
+- [x] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
 
 ## Notes
 
