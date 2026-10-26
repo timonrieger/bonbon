@@ -1,6 +1,6 @@
 # 05 Account deletion
 
-**Owners:** P3 (deletion worker), P4 (dialog) · **Milestone:** M3
+**Owners:** @Dam-Mil (deletion worker), @RR02-rr (dialog) · **Milestone:** M3
 
 ## Done when
 

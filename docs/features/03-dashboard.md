@@ -1,6 +1,6 @@
 # 03 Dashboard & reports
 
-**Owners:** P2 (aggregation via DynamoDB Streams, API), P5 (dashboard UI) · **Milestone:** M3, end of SW10
+**Owners:** @nosernoel (aggregation via DynamoDB Streams, API), @schmid277 (dashboard UI) · **Milestone:** M3, end of SW10
 
 ## Done when
 

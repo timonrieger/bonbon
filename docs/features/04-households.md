@@ -1,6 +1,6 @@
 # 04 Shared households
 
-**Owners:** P2 (API, data model), P5 (household UI) · **Milestone:** M3
+**Owners:** @nosernoel (API, data model), @schmid277 (household UI) · **Milestone:** M3
 
 ## Done when
 

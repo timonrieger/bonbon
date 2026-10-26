@@ -1,6 +1,6 @@
 # 02 Extraction & categorization (with correction)
 
-**Owners:** P3 (worker, Textract), P4 (correction UI) · **Milestone:** M2 (extraction), M3 (correction)
+**Owners:** @Dam-Mil (worker, Textract), @RR02-rr (correction UI) · **Milestone:** M2 (extraction), M3 (correction)
 
 ## Done when
 

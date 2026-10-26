@@ -22,15 +22,15 @@ flowchart LR
 
 | Component | Status | Owner |
 |---|---|---|
-| Cognito, API Gateway, DynamoDB table | scaffolded | Person 1 / 2 |
-| Households API (create, get) | scaffolded (reference pattern) | Person 2 |
-| S3 bucket, presigned upload | planned | Person 1 / 4 |
-| SQS + DLQ, worker, Textract | planned | Person 3 |
-| DynamoDB Streams aggregation | planned | Person 2 |
-| SNS notifications | planned | Person 3 |
-| Account deletion queue + worker | planned | Person 3 |
-| S3 + CloudFront hosting | planned (prod stack only) | Person 1 |
-| CloudWatch alarms + dashboard | planned | Person 5 |
+| Cognito, API Gateway, DynamoDB table | scaffolded | @timonrieger, @nosernoel |
+| Households API (create, get) | scaffolded (reference pattern) | @nosernoel |
+| S3 bucket, presigned upload | planned | @timonrieger, @RR02-rr |
+| SQS + DLQ, worker, Textract | planned | @Dam-Mil |
+| DynamoDB Streams aggregation | planned | @nosernoel |
+| SNS notifications | planned | @Dam-Mil |
+| Account deletion queue + worker | planned | @Dam-Mil |
+| S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
+| CloudWatch alarms + dashboard | planned | @schmid277 |
 
 Update the status column when something lands.
 
@@ -56,7 +56,7 @@ One DynamoDB table, `bonbon-<stage>`, keys `PK` / `SK`. Everything belongs to a 
 | Monthly totals | `HH#<id>` | `MONTH#<yyyy-mm>` | planned |
 | Invite code | `INVITE#<codeHash>` | `META` (TTL 48 h) | planned |
 
-Still to design (Person 2): the index for "receipts by month" and the lookup "which households is user X in" (GSI or `USER#<id>` items). Record the decision as an ADR.
+Still to design (@nosernoel): the index for "receipts by month" and the lookup "which households is user X in" (GSI or `USER#<id>` items). Record the decision as an ADR.
 
 ## Security
 
@@ -71,6 +71,6 @@ Still to design (Person 2): the index for "receipts by month" and the lookup "wh
 | Stack | Account | Deployed by | How |
 |---|---|---|---|
 | `bonbon-dev` | each person's own Learner Lab | that person | `mise run dev` / `mise run stack:up` |
-| `bonbon-prod` | Person 1's Learner Lab | Person 1 | `mise run deploy:prod` from `main` |
+| `bonbon-prod` | @timonrieger's Learner Lab | @timonrieger | `mise run deploy:prod` from `main` |
 
 See [decisions/0004](decisions/0004-per-person-cloud-dev-stacks.md).

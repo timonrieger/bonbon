@@ -10,7 +10,7 @@ The app consists only of managed services: Lambda, API Gateway, Cognito, DynamoD
 
 - Every developer deploys their own stack `bonbon-dev` into their own Learner Lab account. `mise run dev` runs the frontend locally and syncs backend changes to that stack within seconds (`sam sync --watch`).
 - Business logic is tested locally with pytest + moto (in-process fake AWS, no Docker).
-- Production is the `bonbon-prod` stack in Person 1's account, deployed manually with `mise run deploy:prod` from `main`.
+- Production is the `bonbon-prod` stack in @timonrieger's account, deployed manually with `mise run deploy:prod` from `main`.
 - CI runs checks only and never deploys, because Learner Lab credentials expire every few hours.
 
 ## Consequences

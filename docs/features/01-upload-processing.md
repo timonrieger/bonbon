@@ -1,6 +1,6 @@
 # 01 Upload & asynchronous processing
 
-**Owners:** P1 (S3, bucket policies), P3 (SQS, worker), P4 (upload UI) · **Milestone:** M2, end of SW7 (critical)
+**Owners:** @timonrieger (S3, bucket policies), @Dam-Mil (SQS, worker), @RR02-rr (upload UI) · **Milestone:** M2, end of SW7 (critical)
 
 The core of the architecture: the upload ends in S3, everything after runs asynchronously through S3 → SQS → Lambda.
 
