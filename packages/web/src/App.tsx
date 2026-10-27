@@ -11,7 +11,7 @@ export function App() {
         <Link to="/" className="text-xl font-semibold">
           Bonbon
         </Link>
-        <button type="button" onClick={signOut} className="text-sm underline">
+        <button type="button" onClick={signOut} className="text-sm underline decoration-red-600">
           Abmelden
         </button>
       </header>
