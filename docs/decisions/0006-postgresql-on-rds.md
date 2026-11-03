@@ -1,6 +1,6 @@
 # 0006 PostgreSQL on RDS instead of DynamoDB
 
-**Status:** accepted · Supersedes [0002](0002-dynamodb-single-table.md) · Amends [0001](0001-learner-lab-constraints.md)
+**Status:** proposed · Supersedes [0002](0002-dynamodb-single-table.md) · Amends [0001](0001-learner-lab-constraints.md)
 
 ## Context
 
@@ -14,6 +14,12 @@ A feasibility test in the Learner Lab (2026-11-02) showed:
 - Secrets Manager can hold the master password (RDS-managed secret).
 - From inside the VPC, Textract is not reachable without a NAT gateway or VPC endpoint (connect timeout).
 
+SQL options without a VPC were tested too, since the VPC causes most of the follow-up work:
+
+- Aurora Serverless v2 with the Data API: blocked by policy (SW5, see 0002).
+- Aurora DSQL (2026-11-03): blocked. Neither the `voclabs` role nor `LabRole` has `dsql:CreateCluster`; tried via CLI, CloudFormation (`AWS::DSQL::Cluster`, also fails on `dsql:TagResource`) and from a Lambda.
+- RDS publicly accessible: possible, but Lambdas have no fixed IPs, so port 5432 would be open to the internet with only password and TLS as protection.
+
 ## Decision
 
 - Amazon RDS for PostgreSQL, `db.t4g.micro`, Single-AZ, encrypted storage, not publicly accessible, default DB subnet group.
@@ -21,6 +27,10 @@ A feasibility test in the Learner Lab (2026-11-02) showed:
 - Lambdas that use the database run in the VPC. The database security group allows port 5432 only from the Lambda security group.
 - Normalized tables instead of a single table. Monthly totals are computed with SQL `GROUP BY` at query time; the planned DynamoDB Streams aggregation is dropped. Invite codes expire via an `expires_at` column instead of DynamoDB TTL.
 - No RDS Proxy. Connections are reused across invocations and reserved concurrency keeps the total below the connection limit.
+
+## Alternatives considered
+
+- **Keep DynamoDB, aggregate at read time.** Drop the Streams aggregation; each receipt stores its store, date, total and per-category sums, and the dashboard sums one month's receipts per household in the Lambda. No VPC, no idle cost, no migrations, moto tests stay, and it matches the proposal. Downsides: no ad-hoc queries, no foreign keys, and the "receipts by month" index and the user-to-households lookup still have to be designed.
 
 ## Consequences
 
