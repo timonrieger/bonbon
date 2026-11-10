@@ -19,7 +19,7 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 ## Decision
 
 - Amazon RDS for PostgreSQL 18, `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not publicly accessible, `default` DB subnet group. One instance per stack (`bonbon-<stage>`).
-- PostgreSQL rather than MySQL: `date_trunc` and `FILTER` for reports, native `uuid`, `CHECK` constraints, `jsonb` for raw Textract output, transactional schema migrations. Rather than Aurora: the smallest Aurora instance costs several times more and its extras are blocked or not needed.
+- PostgreSQL rather than MySQL: `date_trunc` and `FILTER` for reports, native `uuid`, `CHECK` constraints and partial unique indexes, transactional schema migrations. Rather than Aurora: the smallest Aurora instance costs several times more and its extras are blocked or not needed.
 - Lambdas that use the database run in the VPC with their own security group; the database security group allows port 5432 only from it. VPC and subnet ids are stack parameters looked up by `.mise/tasks/stack-params.py`, never hard-coded.
 - TLS with certificate and hostname verification against the RDS CA bundle shipped in `bonbon/certs/global-bundle.pem`.
 - Normalized tables instead of a single table (see [architecture.md](../architecture.md#data-model)). Monthly totals are computed with SQL `GROUP BY` at query time; the DynamoDB Streams aggregation is dropped. Invite codes expire via `expires_at` instead of DynamoDB TTL.

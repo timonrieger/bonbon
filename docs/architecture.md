@@ -67,10 +67,10 @@ PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrat
 |---|---|---|---|
 | `households` | `id` uuid | name, created_at | implemented |
 | `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household | implemented |
-| `invite_codes` | `code_hash` | household, created_by, `expires_at`, `used_at` | schema only |
-| `receipts` | `id` uuid | status `uploaded`/`processing`/`done`/`failed`/`duplicate`, s3_key, store, purchase_date, total_rappen, raw_textract (jsonb); unique (`household_id`, `file_hash`); index (`household_id`, `purchase_date`) | schema only |
-| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category | schema only |
-| `categories`, `category_rules` | `id` | keyword → category | schema only |
+| `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
+| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | schema only |
+| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | schema only |
+| `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | schema only |
 | `join_attempts` | `id` | rate limit for joining | schema only |
 | `schema_migrations` | `version` | applied migration files | implemented |
 
