@@ -1,6 +1,6 @@
 # 0002 DynamoDB single table
 
-**Status:** accepted · Details: proposal chapter 2, "Begründung DynamoDB"
+**Status:** superseded by [0006](0006-postgresql-on-rds.md)
 
 ## Context
 

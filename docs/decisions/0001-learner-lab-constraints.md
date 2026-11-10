@@ -10,7 +10,7 @@ Each team member has an AWS Academy Learner Lab account with 50 USD of credit. T
 
 - All functions use `LabRole`. No `AWS::IAM::*` resources, no SAM `Policies:`.
 - Everything is deployed to `us-east-1`.
-- Only pay-per-use services that cost nothing when idle (no RDS, no NAT gateways, no always-on compute).
+- Prefer pay-per-use services that cost nothing when idle (no NAT gateways, no always-on compute). Exception: the RDS database, see [0006](0006-postgresql-on-rds.md).
 
 ## Consequences
 
