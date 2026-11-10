@@ -1,5 +1,7 @@
-from datetime import UTC, datetime
-from uuid import uuid4
+from datetime import datetime
+from uuid import UUID
+
+from aws_lambda_powertools.event_handler.exceptions import NotFoundError
 
 from bonbon import db
 from bonbon.auth import Role
@@ -7,47 +9,29 @@ from bonbon.households.models import Household
 
 
 def create(name: str, owner_id: str) -> Household:
-    household_id = str(uuid4())
-    now = datetime.now(UTC)
-    pk = db.household_pk(household_id)
     # Household and owner membership are written together or not at all.
-    db.table().meta.client.transact_write_items(
-        TransactItems=[
-            {
-                "Put": {
-                    "TableName": db.table().name,
-                    "Item": {
-                        "PK": pk,
-                        "SK": db.HOUSEHOLD_META_SK,
-                        "name": name,
-                        "created_at": now.isoformat(),
-                    },
-                    "ConditionExpression": "attribute_not_exists(PK)",
-                }
-            },
-            {
-                "Put": {
-                    "TableName": db.table().name,
-                    "Item": {
-                        "PK": pk,
-                        "SK": db.member_sk(owner_id),
-                        "role": "owner",
-                        "joined_at": now.isoformat(),
-                    },
-                }
-            },
-        ]
-    )
-    return Household(id=household_id, name=name, created_at=now, my_role="owner")
+    with db.transaction() as conn:
+        [[household_id, created_at]] = conn.run(
+            "INSERT INTO households (name) VALUES (:name) RETURNING id, created_at",
+            name=name,
+        )
+        conn.run(
+            "INSERT INTO memberships (household_id, user_id, role)"
+            " VALUES (:household_id, :user_id, 'owner')",
+            household_id=household_id,
+            user_id=owner_id,
+        )
+    return _household(household_id, name, created_at, "owner")
 
 
 def get(household_id: str, my_role: Role) -> Household:
-    item = db.table().get_item(
-        Key={"PK": db.household_pk(household_id), "SK": db.HOUSEHOLD_META_SK}
-    )["Item"]
-    return Household(
-        id=household_id,
-        name=item["name"],
-        created_at=datetime.fromisoformat(item["created_at"]),
-        my_role=my_role,
-    )
+    rows = db.query("SELECT name, created_at FROM households WHERE id = :id", id=UUID(household_id))
+    if not rows:
+        # Deleted between the membership check and this read.
+        raise NotFoundError("Household not found")
+    [[name, created_at]] = rows
+    return _household(household_id, name, created_at, my_role)
+
+
+def _household(household_id: UUID | str, name: str, created_at: datetime, role: Role) -> Household:
+    return Household(id=str(household_id), name=name, created_at=created_at, my_role=role)

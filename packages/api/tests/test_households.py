@@ -19,6 +19,11 @@ def test_non_member_gets_404() -> None:
     assert status == 404
 
 
+def test_malformed_household_id_gets_404() -> None:
+    status, _ = api_request(handler, "GET", "/households/not-a-uuid")
+    assert status == 404
+
+
 def test_rejects_empty_name() -> None:
     status, _ = api_request(handler, "POST", "/households", body={"name": ""})
     assert status == 422

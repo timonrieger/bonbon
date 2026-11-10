@@ -13,6 +13,14 @@ Parameters:
     Type: String
     AllowedValues: [dev, prod]
     Default: dev
+  # The database and the Lambdas that use it live in the account's default VPC (only the
+  # `default` DB subnet group works in the Learner Lab). Looked up by .mise/tasks/stack-params.py.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The account's default VPC
+  LambdaSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Default-VPC subnets for Lambdas (without use1-az3, which Lambda doesn't support)
 
 Globals:
   Function:
@@ -42,6 +50,82 @@ Resources:
         - { AttributeName: SK, KeyType: RANGE }
       SSESpecification:
         SSEEnabled: true
+
+  # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
+  # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows only the
+  # `default` DB subnet group, Single-AZ, no RDS Proxy and no IAM database auth.
+  Database:
+    Type: AWS::RDS::DBInstance
+    # Dev data is disposable. Switch both to Snapshot before the first prod deploy (ADR 0006).
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      # A fixed name means CloudFormation can't silently replace the instance on an update,
+      # and `mise run db:stop` knows what to stop.
+      DBInstanceIdentifier: !Sub bonbon-${Stage}
+      Engine: postgres
+      EngineVersion: "18.6"
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: default
+      VPCSecurityGroups: [!GetAtt DbSecurityGroup.GroupId]
+      DBName: bonbon
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:password}}"
+      BackupRetentionPeriod: 0
+      DeletionProtection: false
+      EnablePerformanceInsights: false
+      AutoMinorVersionUpgrade: true
+
+  # Our own secrets without rotation. Not RDS-managed (ManageMasterUserPassword): that one
+  # rotates every 7 days and the passwords below are resolved into Lambda environment
+  # variables at deploy time, because Secrets Manager isn't reachable from inside the VPC.
+  # Known limitation: the password is visible in the Lambda configuration (ADR 0007).
+  DbMasterSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: !Sub Bonbon ${Stage} database master user, used only by MigrateFunction
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "bonbon_admin"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  # The user that API and worker Lambdas connect as (DML only). Created by migration 0001;
+  # MigrateFunction sets its password from this secret.
+  DbAppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: !Sub Bonbon ${Stage} database app user for API and worker Lambdas
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "bonbon_app"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  # Attached to every Lambda that runs in the VPC. Outbound stays open: without a NAT gateway
+  # the only reachable targets are the database (and later the S3 gateway endpoint).
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub Bonbon ${Stage} Lambdas that use the database
+      VpcId: !Ref VpcId
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub Bonbon ${Stage} database, PostgreSQL only from the Lambda security group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: PostgreSQL from Bonbon Lambdas
+          IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -89,11 +173,26 @@ Resources:
 
   # One function per domain; routes inside it are handled by Powertools.
   # Every route in the Python router needs a matching event here.
+  # Functions that use the database run in the VPC and hold one connection per container.
+  # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
+  # today Households 20 + Migrate 1.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: bonbon.handlers.households.handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      # Cold start in the VPC plus first DB login takes a few hundred ms; API Gateway stops at 29 s.
+      Timeout: 15
+      ReservedConcurrentExecutions: 20
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
       Events:
         CreateHousehold:
           Type: Api
@@ -222,6 +321,28 @@ Resources:
             BatchSize: 1
             FunctionResponseTypes: [ReportBatchItemFailures]
 
+  # Applies src/bonbon/migrations/*.sql. Invoked by `mise run db:migrate`, not by API Gateway.
+  # The only function with the master user.
+  MigrateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.migrate.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 120
+      # Two migrations must never run at the same time.
+      ReservedConcurrentExecutions: 1
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:password}}"
+          DB_APP_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_APP_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+
 Outputs:
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api
@@ -229,3 +350,7 @@ Outputs:
     Value: !Ref UserPool
   UserPoolClientId:
     Value: !Ref UserPoolClient
+  MigrateFunctionName:
+    Value: !Ref MigrateFunction
+  DbInstanceId:
+    Value: !Ref Database
