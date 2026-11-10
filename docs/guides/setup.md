@@ -31,13 +31,14 @@ Do this at the start of every lab session (credentials expire after about 4 hour
 
 ## 4. Deploy your own dev stack
 
-First time only (about 3 minutes):
+First time only (about 15 minutes, most of it creating the database):
 
 ```sh
+mise run stack:plan   # optional: shows what would change, deploys nothing
 mise run stack:up
 ```
 
-This creates `bonbon-dev` in your account (API, login, database) and writes `packages/web/.env.local`.
+This creates `bonbon-dev` in your account (API, login, PostgreSQL database), applies the database migrations and writes `packages/web/.env.local`. Run `mise run stack:up` again whenever you change `template.yaml` or add a migration; `mise run db:migrate status` shows the applied migrations and row counts.
 
 ## 5. Start developing
 
@@ -50,4 +51,16 @@ Stop it with Ctrl+C in the terminal.
 
 ## Budget
 
-Each account has 50 USD. Idle stacks cost close to nothing. Check the remaining budget weekly (shown in the Learner Lab). Never create EC2, RDS or NAT gateways.
+Each account has 50 USD. Check the remaining budget weekly (shown in the Learner Lab).
+
+Everything in the stack is pay-per-use except the database ([decisions/0006](../decisions/0006-postgresql-on-rds.md)): it costs about 0.50 USD per day while running, about 15 USD per month. Stop it when you're not working:
+
+```sh
+mise run db:stop     # storage still costs ~0.10 USD/day; AWS starts it again after 7 days
+mise run db:start    # takes a few minutes
+mise run stack:down  # delete your whole dev stack, including the database and its data
+```
+
+`stack:down` can take up to 20 minutes: AWS releases the network interfaces of VPC Lambdas slowly. Empty the receipts bucket first, or the delete fails. Afterwards, Lambda log groups (`/aws/lambda/bonbon-dev-*`) stay until you delete them.
+
+Never create EC2 instances, NAT gateways, interface VPC endpoints, extra databases or anything else by hand in the console.

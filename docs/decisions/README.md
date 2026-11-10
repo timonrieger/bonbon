@@ -12,3 +12,4 @@ Template: copy an existing file. Sections: **Context**, **Decision**, **Conseque
 | [0004](0004-per-person-cloud-dev-stacks.md) | Develop against personal cloud stacks, no local AWS emulation, no Docker |
 | [0005](0005-openapi-generated-client.md)    | Type-safe API via OpenAPI + generated client instead of tRPC             |
 | [0006](0006-postgresql-on-rds.md)           | PostgreSQL on RDS instead of DynamoDB                                    |
+| [0007](0007-worker-split-and-db-credentials.md) | Worker split and database credentials without NAT                        |

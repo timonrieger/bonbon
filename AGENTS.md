@@ -14,7 +14,10 @@ Everything runs through mise. Never call `pip`, `npm`, `sam deploy` etc. directl
 | `mise run test` | Backend tests only (AWS is faked with moto) |
 | `mise run generate` | Regenerate `openapi.json` and the frontend client after changing Python routes |
 | `mise run dev` | Frontend locally + live sync of the backend to the developer's own AWS stack |
-| `mise run stack:up` | Full deploy of the developer's own dev stack |
+| `mise run stack:plan` | Show the changeset for the developer's own dev stack without deploying |
+| `mise run stack:up` | Full deploy of the developer's own dev stack, then database migrations |
+| `mise run db:migrate [status]` | Apply migrations (or show their status) on the dev stack's database |
+| `mise run db:stop` / `stack:down` | Stop the dev database / delete the whole dev stack |
 | `mise tasks --all` | List all tasks |
 
 ## Repo map

@@ -7,7 +7,7 @@
 - [x] Create a household; creator becomes owner (`POST /households`)
 - [x] Members can read their household; non-members get 404 (`GET /households/{household_id}`)
 - [ ] List the households I'm a member of
-- [ ] Invite via random code, valid 48 h, single use; only a hash is stored; expired codes removed by DynamoDB TTL (optional: join without code)
+- [ ] Invite via random code, valid 48 h, single use; only a hash is stored; expired via `expires_at` (optional: join without code)
 - [ ] Joining is one transaction: create member and invalidate the code
 - [ ] Failed join attempts are limited per user; API Gateway throttles
 - [ ] Every receipt belongs to exactly one household; all reports use that household's data
