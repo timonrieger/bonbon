@@ -53,6 +53,7 @@ def api_request(
     *,
     user: str = "user-1",
     body: dict | None = None,
+    query: dict[str, str] | None = None,
 ) -> tuple[int, Any]:
     """Call a Lambda handler like API Gateway would, signed in as `user`."""
     event = {
@@ -61,8 +62,8 @@ def api_request(
         "resource": path,
         "headers": {"Content-Type": "application/json"},
         "multiValueHeaders": {},
-        "queryStringParameters": None,
-        "multiValueQueryStringParameters": None,
+        "queryStringParameters": query,
+        "multiValueQueryStringParameters": {k: [v] for k, v in query.items()} if query else None,
         "pathParameters": None,
         "body": json.dumps(body) if body is not None else None,
         "isBase64Encoded": False,
