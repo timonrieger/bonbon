@@ -6,7 +6,7 @@ Turns photos of Swiss supermarket receipts (Migros, Coop, Aldi, Lidl) into a sha
 
 ## Stack
 
-- **Backend:** Python 3.14 on AWS Lambda ([Powertools](https://docs.powertools.aws.dev/lambda/python/latest/)), API Gateway, Cognito, DynamoDB, S3, SQS, SNS, Textract
+- **Backend:** Python 3.14 on AWS Lambda ([Powertools](https://docs.powertools.aws.dev/lambda/python/latest/)), API Gateway, Cognito, RDS PostgreSQL, S3, SQS, SNS, Textract
 - **Frontend:** Vite + React + TypeScript, TanStack Query, Tailwind CSS, Amplify Auth
 - **API contract:** OpenAPI from Pydantic models → generated TypeScript client ([oazapfts](https://github.com/oazapfts/oazapfts))
 - **Infrastructure:** AWS SAM (`template.yaml`)

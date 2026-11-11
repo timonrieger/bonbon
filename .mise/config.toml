@@ -46,18 +46,42 @@ description = "Everything CI checks. Run before every commit and PR"
 run = [{ task = "//packages/api:openapi" }, { task = "//packages/web:client" }]
 description = "Regenerate openapi.json and the frontend API client from the Python routes"
 
+# --parameter-overrides replaces the one in samconfig.toml, so Stage is repeated here.
+# stack-params.py looks up the default VPC of the current account (nothing hard-coded).
+[tasks."stack:plan"]
+depends = ["//packages/api:requirements"]
+run = [
+  "sam build --cached --parallel",
+  "sam deploy --config-env dev --no-execute-changeset --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\"",
+]
+description = "Show what stack:up would change in 'bonbon-dev' (changeset), without deploying"
+
 [tasks."stack:up"]
 depends = ["//packages/api:requirements"]
 run = [
   "sam build --cached --parallel",
-  "sam deploy --config-env dev",
+  "sam deploy --config-env dev --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\"",
   { task = "env" },
+  { task = "db:migrate" },
 ]
-description = "Deploy (or update) your personal dev stack 'bonbon-dev' and write packages/web/.env.local"
+description = "Deploy (or update) your personal dev stack 'bonbon-dev', migrate its database and write packages/web/.env.local"
+
+[tasks."stack:down"]
+confirm = "Delete your dev stack bonbon-dev with its database and all data? Empty the receipts bucket first."
+run = "sam delete --stack-name bonbon-dev --region us-east-1 --no-prompts"
+description = "Delete your personal dev stack 'bonbon-dev' (never prod). VPC Lambdas can take ~20 min to release their network interfaces"
+
+[tasks."db:stop"]
+run = "aws rds stop-db-instance --db-instance-identifier bonbon-dev --query DBInstance.DBInstanceStatus --output text"
+description = "Stop your dev database to save money (storage still costs). AWS starts it again after 7 days"
+
+[tasks."db:start"]
+run = "aws rds start-db-instance --db-instance-identifier bonbon-dev --query DBInstance.DBInstanceStatus --output text"
+description = "Start your stopped dev database (takes a few minutes)"
 
 [tasks.sync]
 depends = ["//packages/api:requirements"]
-run = "sam sync --config-env dev --watch"
+run = "sam sync --config-env dev --watch --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\""
 raw = true
 description = "Watch for changes and push them to your dev stack within seconds"
 
@@ -68,5 +92,8 @@ description = "Local dev: frontend on http://localhost:5173 + live sync of the b
 [tasks."deploy:prod"]
 depends = ["//packages/api:requirements"]
 confirm = "Deploy to PROD (stack bonbon-prod in the current AWS account)?"
-run = ["sam build --cached --parallel", "sam deploy --config-env prod"]
+run = [
+  "sam build --cached --parallel",
+  "sam deploy --config-env prod --parameter-overrides \"Stage=prod $(.mise/tasks/stack-params.py)\"",
+]
 description = "Deploy the production stack. Only the infra owner runs this, from main"

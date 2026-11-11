@@ -3,12 +3,11 @@ import os
 from collections.abc import Iterator
 from typing import Any
 
-import boto3
 import pytest
+from fakes import FakeDatabase
 from moto import mock_aws
 
 os.environ.update(
-    TABLE_NAME="bonbon-test",
     AWS_DEFAULT_REGION="us-east-1",
     AWS_ACCESS_KEY_ID="testing",
     AWS_SECRET_ACCESS_KEY="testing",
@@ -18,24 +17,26 @@ os.environ.update(
 
 @pytest.fixture(autouse=True)
 def aws() -> Iterator[None]:
-    """Fake AWS for every test, with the same table layout as template.yaml."""
-    from bonbon import db
-
-    db.table.cache_clear()
+    """Fake AWS for every test, so nothing ever reaches a real account."""
     with mock_aws():
-        boto3.client("dynamodb").create_table(
-            TableName=os.environ["TABLE_NAME"],
-            KeySchema=[
-                {"AttributeName": "PK", "KeyType": "HASH"},
-                {"AttributeName": "SK", "KeyType": "RANGE"},
-            ],
-            AttributeDefinitions=[
-                {"AttributeName": "PK", "AttributeType": "S"},
-                {"AttributeName": "SK", "AttributeType": "S"},
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
         yield
+
+
+@pytest.fixture(autouse=True)
+def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
+    """Replace every SQL function with an in-memory fake (see tests/fakes.py)."""
+    from bonbon import auth, db
+    from bonbon.households import repo as households
+
+    def no_real_database(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("A test reached the real database; add a fake in tests/fakes.py")
+
+    fake = FakeDatabase()
+    monkeypatch.setattr(db, "connect", no_real_database)
+    monkeypatch.setattr(auth, "role_in_household", fake.role_in_household)
+    monkeypatch.setattr(households, "create", fake.create_household)
+    monkeypatch.setattr(households, "get", fake.get_household)
+    return fake
 
 
 class LambdaContext:
