@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { getHousehold } from '@/api';
 
 export function HouseholdPage() {
@@ -16,6 +16,12 @@ export function HouseholdPage() {
     <div>
       <h1 className="text-2xl font-semibold">{household.data.name}</h1>
       <p className="text-sm text-gray-600">Deine Rolle: {household.data.my_role}</p>
+      <Link
+        to={`/households/${householdId}/dashboard`}
+        className="mt-4 inline-block text-sm underline"
+      >
+        Zum Dashboard
+      </Link>
     </div>
   );
 }

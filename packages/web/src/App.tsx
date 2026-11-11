@@ -1,5 +1,6 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { Link, Route, Routes } from 'react-router';
+import { DashboardPage } from '@/pages/DashboardPage';
 import { HomePage } from '@/pages/HomePage';
 import { HouseholdPage } from '@/pages/HouseholdPage';
 
@@ -18,6 +19,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/households/:householdId" element={<HouseholdPage />} />
+        <Route path="/households/:householdId/dashboard" element={<DashboardPage />} />
       </Routes>
     </div>
   );
