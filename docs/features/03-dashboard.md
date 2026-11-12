@@ -17,12 +17,12 @@ All routes check membership (404 for non-members). Amounts are integers in Rappe
 
 | Route | Frontend function | Returns |
 |---|---|---|
-| `GET /households/{household_id}/receipts?month=` | `listReceipts` | All receipts, newest first; `month` is optional |
+| `GET /households/{household_id}/receipts?month=` | `listReceipts` | All receipts, newest purchase date first (upload date if none, then latest upload); `month` is optional |
 | `GET /households/{household_id}/receipts/{receipt_id}` | `getReceipt` | Receipt with items and a presigned `image_url` |
 | `GET /households/{household_id}/reports/monthly?month=` | `getMonthlyReport` | Total, receipt count, per category, per store, previous month's total |
 | `GET /households/{household_id}/reports/trend?months=6` | `getSpendingTrend` | Total per month, oldest first, months without spending as 0 (`months` 1–24) |
 
-The models are fixed so the dashboard can be built against them; the routes answer 501 until the SQL is in place.
+The models are fixed so the dashboard can be built against them; the routes answer 501 until the SQL is in place. The 501 is temporary and therefore not part of the OpenAPI spec; the 404 is.
 
 ## Rules
 

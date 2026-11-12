@@ -10,7 +10,7 @@ from aws_lambda_powertools.event_handler.api_gateway import Router
 from aws_lambda_powertools.event_handler.exceptions import ServiceError
 from aws_lambda_powertools.event_handler.openapi.params import Query
 
-from bonbon.auth import current_user_id, require_membership
+from bonbon.auth import MEMBERSHIP_RESPONSES, current_user_id, require_membership
 from bonbon.receipts.models import MONTH_PATTERN
 from bonbon.reports.models import MonthlyReport, SpendingTrend
 
@@ -21,6 +21,7 @@ router = Router()
     "/households/<household_id>/reports/monthly",
     operation_id="getMonthlyReport",
     tags=["reports"],
+    responses=MEMBERSHIP_RESPONSES,
 )
 def get_monthly_report(
     household_id: str,
@@ -35,6 +36,7 @@ def get_monthly_report(
     "/households/<household_id>/reports/trend",
     operation_id="getSpendingTrend",
     tags=["reports"],
+    responses=MEMBERSHIP_RESPONSES,
 )
 def get_spending_trend(
     household_id: str,

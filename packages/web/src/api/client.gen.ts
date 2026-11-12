@@ -94,6 +94,12 @@ export function getHousehold({ householdId }: {
         status: 200;
         data: Household;
     } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
         status: 422;
         data: HttpValidationError;
     }>(`/households/${encodeURIComponent(householdId)}`, {
@@ -110,6 +116,12 @@ export function listReceipts({ householdId, month }: {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: ReceiptList;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
     } | {
         status: 422;
         data: HttpValidationError;
@@ -130,6 +142,12 @@ export function getReceipt({ householdId, receiptId }: {
         status: 200;
         data: ReceiptDetail;
     } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
         status: 422;
         data: HttpValidationError;
     }>(`/households/${encodeURIComponent(householdId)}/receipts/${encodeURIComponent(receiptId)}`, {
@@ -146,6 +164,12 @@ export function getMonthlyReport({ householdId, month }: {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: MonthlyReport;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
     } | {
         status: 422;
         data: HttpValidationError;
@@ -165,6 +189,12 @@ export function getSpendingTrend({ householdId, months }: {
     return oazapfts.ok(oazapfts.fetchJson<{
         status: 200;
         data: SpendingTrend;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
     } | {
         status: 422;
         data: HttpValidationError;

@@ -1,12 +1,13 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ReceiptStatus = Literal["uploaded", "processing", "done", "failed", "duplicate"]
 
 # A calendar month as YYYY-MM, used by the receipt list and the reports.
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+Month = Annotated[str, Field(pattern=MONTH_PATTERN, examples=["2026-11"])]
 
 
 class ReceiptSummary(BaseModel):

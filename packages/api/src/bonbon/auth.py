@@ -5,11 +5,34 @@ from uuid import UUID
 
 from aws_lambda_powertools.event_handler.api_gateway import Router
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError
+from aws_lambda_powertools.event_handler.openapi.types import OpenAPIResponse
 from aws_lambda_powertools.utilities.data_classes import APIGatewayProxyEvent
 
 from bonbon import db
 
 Role = Literal["owner", "member"]
+
+# Pass as `responses=` on every route that calls require_membership, so the 404 is in the spec.
+# Custom responses replace Powertools' defaults: 200 has no `content`, so Powertools fills in the
+# route's return model; 404 states the error body explicitly, otherwise it would get that model too.
+MEMBERSHIP_RESPONSES: dict[int, OpenAPIResponse] = {
+    200: {"description": "Successful Response"},
+    404: {
+        "description": "Household not found, or the caller is not a member",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "statusCode": {"type": "integer"},
+                        "message": {"type": "string"},
+                    },
+                    "required": ["statusCode", "message"],
+                }
+            }
+        },
+    },
+}
 
 
 def current_user_id(router: Router) -> str:

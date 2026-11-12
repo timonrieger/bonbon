@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from bonbon.receipts.models import Month
+
 # Totals count receipts with status 'done' only, so duplicates and failed receipts are left out.
 # A receipt without a recognized purchase date counts towards the month it was uploaded in.
 
@@ -16,7 +18,7 @@ class StoreTotal(BaseModel):
 
 
 class MonthlyReport(BaseModel):
-    month: str
+    month: Month
     total_rappen: int
     receipt_count: int
     previous_month_total_rappen: int
@@ -26,7 +28,7 @@ class MonthlyReport(BaseModel):
 
 
 class MonthTotal(BaseModel):
-    month: str
+    month: Month
     total_rappen: int
 
 

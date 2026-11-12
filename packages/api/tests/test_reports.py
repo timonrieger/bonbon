@@ -1,7 +1,9 @@
 import pytest
 from bonbon.handlers.households import handler as households
 from bonbon.handlers.reports import handler
+from bonbon.reports.models import MonthTotal
 from conftest import api_request
+from pydantic import ValidationError
 
 
 @pytest.fixture
@@ -49,3 +51,13 @@ def test_trend_rejects_months_out_of_range(household_id: str, months: str) -> No
         handler, "GET", f"/households/{household_id}/reports/trend", query={"months": months}
     )
     assert status == 422
+
+
+@pytest.mark.parametrize("month", ["2026-13", "2026-1", "11-2026"])
+def test_report_models_reject_malformed_month(month: str) -> None:
+    with pytest.raises(ValidationError):
+        MonthTotal(month=month, total_rappen=0)
+
+
+def test_report_models_accept_month() -> None:
+    assert MonthTotal(month="2026-11", total_rappen=0).month == "2026-11"
