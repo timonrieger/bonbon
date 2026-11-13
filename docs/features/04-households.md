@@ -6,7 +6,8 @@
 
 - [x] Create a household; creator becomes owner (`POST /households`)
 - [x] Members can read their household; non-members get 404 (`GET /households/{household_id}`)
-- [ ] List the households I'm a member of
+- [x] List the households I'm a member of (`GET /households`)
+- [x] List the members of a household with their display names, owner first (`GET /households/{household_id}/members`)
 - [ ] Invite via random code, valid 48 h, single use; only a hash is stored; expired via `expires_at` (optional: join without code)
 - [ ] Joining is one transaction: create member and invalidate the code
 - [ ] Failed join attempts are limited per user; API Gateway throttles

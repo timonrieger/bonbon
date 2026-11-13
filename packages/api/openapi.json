@@ -74,6 +74,70 @@
         }
       }
     },
+    "/households/{household_id}/members": {
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "GET /households/{household_id}/members",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/households/{household_id}/receipts": {
       "get": {
         "tags": [
@@ -379,6 +443,35 @@
       }
     },
     "/households": {
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "GET /households",
+        "operationId": "listHouseholds",
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdList"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "households"
@@ -500,6 +593,71 @@
           "my_role"
         ],
         "title": "Household"
+      },
+      "HouseholdList": {
+        "properties": {
+          "households": {
+            "items": {
+              "$ref": "#/components/schemas/Household"
+            },
+            "type": "array",
+            "title": "Households"
+          }
+        },
+        "type": "object",
+        "required": [
+          "households"
+        ],
+        "title": "HouseholdList"
+      },
+      "Member": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "member"
+            ],
+            "title": "Role"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "role",
+          "joined_at"
+        ],
+        "title": "Member"
+      },
+      "MemberList": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members"
+        ],
+        "title": "MemberList"
       },
       "MonthTotal": {
         "properties": {

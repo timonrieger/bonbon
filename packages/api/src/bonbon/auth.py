@@ -9,6 +9,7 @@ from aws_lambda_powertools.event_handler.openapi.types import OpenAPIResponse
 from aws_lambda_powertools.utilities.data_classes import APIGatewayProxyEvent
 
 from bonbon import db
+from bonbon.users import repo as users
 
 Role = Literal["owner", "member"]
 
@@ -35,10 +36,35 @@ MEMBERSHIP_RESPONSES: dict[int, OpenAPIResponse] = {
 }
 
 
+# (display_name, email) last written per user id, per Lambda container. Skips the database
+# write on repeated requests; a changed name in the token still gets through.
+_synced: dict[str, tuple[str, str | None]] = {}
+
+
 def current_user_id(router: Router) -> str:
-    """The Cognito user id ('sub') of the current request. API Gateway already verified the JWT."""
+    """The Cognito user id ('sub') of the current request. API Gateway already verified the JWT.
+
+    Also makes sure the user exists in the users table with the name and e-mail from the ID
+    token, before any route writes a membership or receipt that references them.
+    """
     event = APIGatewayProxyEvent(router.current_event.raw_event)
-    return event.request_context.authorizer.claims["sub"]
+    claims = event.request_context.authorizer.claims
+    user_id: str = claims["sub"]
+    email: str | None = claims.get("email")
+    profile = (display_name(claims.get("name"), email), email)
+    if _synced.get(user_id) != profile:
+        users.sync(user_id, *profile)
+        _synced[user_id] = profile
+    return user_id
+
+
+def display_name(name: str | None, email: str | None) -> str:
+    """The name from the token; accounts created before the name field get their e-mail prefix."""
+    if name and name.strip():
+        return name.strip()
+    if email:
+        return email.split("@")[0]
+    return "Unbekannt"
 
 
 def require_membership(household_id: str, user_id: str) -> Role:
