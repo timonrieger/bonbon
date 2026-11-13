@@ -21,4 +21,5 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 - The receipt id is created when the presigned URL is issued and is part of the S3 key.
 - S3 lifecycle: Glacier Instant Retrieval after 30 days, delete never-processed uploads (tag `status=pending`) after 7 days, abort incomplete multipart uploads after 1 day.
+- The worker sets `duplicate` only for the same file hash in the household. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
 - A Textract mock mode (realistic delay and rate limit) is needed for the load test.
