@@ -39,6 +39,18 @@ export type ReceiptSummary = {
 export type ReceiptList = {
     receipts: ReceiptSummary[];
 };
+export type CreateReceiptRequest = {
+    content_type: ContentType;
+    size_bytes: number;
+};
+export type ReceiptUpload = {
+    receipt_id: string;
+    upload_url: string;
+    upload_headers: {
+        [key: string]: string;
+    };
+    expires_in: number;
+};
 export type ReceiptItem = {
     position: number;
     name: string;
@@ -130,6 +142,31 @@ export function listReceipts({ householdId, month }: {
     }))}`, {
         ...opts
     }));
+}
+/**
+ * POST /households/{household_id}/receipts
+ */
+export function createReceipt({ householdId, createReceiptRequest }: {
+    householdId: string;
+    createReceiptRequest: CreateReceiptRequest;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: ReceiptUpload;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/receipts`, oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: createReceiptRequest
+    })));
 }
 /**
  * GET /households/{household_id}/receipts/{receipt_id}
@@ -232,4 +269,9 @@ export enum Status {
     Done = "done",
     Failed = "failed",
     Duplicate = "duplicate"
+}
+export enum ContentType {
+    ImageJpeg = "image/jpeg",
+    ImagePng = "image/png",
+    ApplicationPdf = "application/pdf"
 }

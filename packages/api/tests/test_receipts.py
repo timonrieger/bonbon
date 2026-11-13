@@ -1,3 +1,5 @@
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 from bonbon.handlers.households import handler as households
 from bonbon.handlers.receipts import handler
@@ -12,7 +14,47 @@ def household_id() -> str:
     return created["id"]
 
 
-# The routes only fix the contract so far; members get 501 until the SQL is in place.
+def upload(household_id: str, user: str = "user-1", **body: object) -> tuple[int, dict]:
+    body = {"content_type": "image/jpeg", "size_bytes": 400_000, **body}
+    return api_request(
+        handler, "POST", f"/households/{household_id}/receipts", user=user, body=body
+    )
+
+
+def test_member_gets_upload_url(household_id: str) -> None:
+    status, created = upload(household_id)
+    assert status == 201
+    assert created["expires_in"] == 300
+    assert created["upload_headers"] == {
+        "Content-Type": "image/jpeg",
+        "x-amz-tagging": "status=pending",
+    }
+    url = urlparse(created["upload_url"])
+    assert url.path.endswith(f"households/{household_id}/receipts/{created['receipt_id']}")
+    # Type, size and the lifecycle tag are part of the signature, so S3 enforces them.
+    signed = parse_qs(url.query)["X-Amz-SignedHeaders"][0].split(";")
+    assert {"content-type", "content-length", "x-amz-tagging"} <= set(signed)
+
+
+def test_non_member_cannot_upload(household_id: str) -> None:
+    status, _ = upload(household_id, user="stranger")
+    assert status == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"content_type": "image/gif"},
+        {"size_bytes": 0},
+        {"size_bytes": 5 * 1024 * 1024 + 1},
+    ],
+)
+def test_rejects_wrong_type_or_size(household_id: str, body: dict) -> None:
+    status, _ = upload(household_id, **body)
+    assert status == 422
+
+
+# List and detail only fix the contract so far; members get 501 until the SQL is in place.
 @pytest.mark.parametrize(
     ("path", "query"),
     [

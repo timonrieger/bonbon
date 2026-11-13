@@ -12,6 +12,7 @@ os.environ.update(
     AWS_ACCESS_KEY_ID="testing",
     AWS_SECRET_ACCESS_KEY="testing",
     POWERTOOLS_SERVICE_NAME="bonbon-test",
+    RECEIPTS_BUCKET="bonbon-receipts-test",
 )
 
 
@@ -27,6 +28,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     """Replace every SQL function with an in-memory fake (see tests/fakes.py)."""
     from bonbon import auth, db
     from bonbon.households import repo as households
+    from bonbon.receipts import repo as receipts
 
     def no_real_database(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("A test reached the real database; add a fake in tests/fakes.py")
@@ -36,6 +38,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(auth, "role_in_household", fake.role_in_household)
     monkeypatch.setattr(households, "create", fake.create_household)
     monkeypatch.setattr(households, "get", fake.get_household)
+    monkeypatch.setattr(receipts, "create", fake.create_receipt)
     return fake
 
 

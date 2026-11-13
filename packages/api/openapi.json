@@ -153,6 +153,78 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "POST /households/{household_id}/receipts",
+        "operationId": "createReceipt",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Receipt created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptUpload"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/households/{household_id}/receipts/{receipt_id}": {
@@ -454,6 +526,31 @@
           "name"
         ],
         "title": "CreateHouseholdRequest"
+      },
+      "CreateReceiptRequest": {
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ],
+            "title": "Content Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "maximum": 5242880.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "CreateReceiptRequest"
       },
       "HTTPValidationError": {
         "properties": {
@@ -804,6 +901,37 @@
           "created_at"
         ],
         "title": "ReceiptSummary"
+      },
+      "ReceiptUpload": {
+        "properties": {
+          "receipt_id": {
+            "type": "string",
+            "title": "Receipt Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "upload_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Upload Headers"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "receipt_id",
+          "upload_url",
+          "upload_headers",
+          "expires_in"
+        ],
+        "title": "ReceiptUpload"
       },
       "SpendingTrend": {
         "properties": {

@@ -10,6 +10,26 @@ MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 Month = Annotated[str, Field(pattern=MONTH_PATTERN, examples=["2026-11"])]
 
 
+# The frontend shrinks photos to ~300-500 KB; PDFs are passed through as they are.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+UploadContentType = Literal["image/jpeg", "image/png", "application/pdf"]
+
+
+class CreateReceiptRequest(BaseModel):
+    content_type: UploadContentType
+    # Signed into the upload URL: S3 rejects a file of any other size.
+    size_bytes: int = Field(gt=0, le=MAX_UPLOAD_BYTES)
+
+
+class ReceiptUpload(BaseModel):
+    receipt_id: str
+    # Presigned S3 URL for one PUT of the file, with exactly the headers in upload_headers.
+    upload_url: str
+    # Send all of these with the PUT, unchanged; the signature covers them.
+    upload_headers: dict[str, str]
+    expires_in: int
+
+
 class ReceiptSummary(BaseModel):
     id: str
     status: ReceiptStatus
