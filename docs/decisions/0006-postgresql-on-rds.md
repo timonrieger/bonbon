@@ -39,4 +39,3 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
 - **Prod:** switch `DeletionPolicy` and `UpdateReplacePolicy` to `Snapshot` and set a backup retention before the first prod deploy with the database.
 - **Tests:** moto can't fake PostgreSQL and Docker is ruled out (0004). For now, route tests replace the repo layer with in-memory fakes (`tests/fakes.py`), so the SQL itself is only exercised on a dev stack. Candidate for later: a pip-installable PostgreSQL such as `pgserver` as a dev dependency.
-- **DynamoDB table:** stays in the template until all domains are on PostgreSQL, then removed together with `TABLE_NAME` and `moto[dynamodb]`.

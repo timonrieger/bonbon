@@ -33,7 +33,6 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway | scaffolded | @timonrieger, @nosernoel |
 | RDS PostgreSQL, security groups, secrets, migration Lambda (`mise run db:migrate`) | scaffolded | @nosernoel |
-| DynamoDB table | unused, removed once all domains are on PostgreSQL | @nosernoel |
 | Households API (create, get) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint | planned | @timonrieger, @RR02-rr |

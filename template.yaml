@@ -30,27 +30,11 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        TABLE_NAME: !Ref Table
         RECEIPTS_BUCKET: !Ref ReceiptsBucket
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
 
 Resources:
-  # Single table for all data, see docs/architecture.md#data-model.
-  Table:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub bonbon-${Stage}
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - { AttributeName: PK, AttributeType: S }
-        - { AttributeName: SK, AttributeType: S }
-      KeySchema:
-        - { AttributeName: PK, KeyType: HASH }
-        - { AttributeName: SK, KeyType: RANGE }
-      SSESpecification:
-        SSEEnabled: true
-
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
   # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows only the
   # `default` DB subnet group, Single-AZ, no RDS Proxy and no IAM database auth.
