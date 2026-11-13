@@ -40,7 +40,8 @@ flowchart LR
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
 | Worker split: Textract Lambda outside the VPC, results queue, DB Lambda inside ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned (stage 2) | @timonrieger, @Dam-Mil |
 | Worker logic: Textract, categorization, status | planned | @Dam-Mil |
-| Reports (SQL `GROUP BY` at query time) | planned | @nosernoel |
+| Receipt list and detail API (`ReceiptsFunction`) | contract only, routes answer 501 | @nosernoel |
+| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | contract only, routes answer 501 | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
 | S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
