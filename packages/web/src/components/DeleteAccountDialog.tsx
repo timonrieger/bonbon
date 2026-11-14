@@ -16,7 +16,7 @@
  *  1. Noel (@Dam-Mil) implements the deletion worker and DELETE /users/me.
  *  2. Run `mise run generate` so the endpoint appears in client.gen.ts.
  *  3. In App.tsx, pass a real `onConfirmed` from useMutation(deleteAccount).
- *  4. Remove `disabled` and the `acknowledged` guard from the confirm button.
+ *  4. Replace the hardcoded `disabled` on the confirm button with `!acknowledged || isSaving`.
  *  5. After the API responds, call signOut() so the session is cleaned up.
  *
  * See docs/features/05-account-deletion.md.
@@ -56,7 +56,7 @@ export function DeleteAccountDialog({
   const titleId = `${id}-title`;
   const descId = `${id}-desc`;
 
-  // The user must tick the checkbox before the confirm button becomes clickable.
+  // Will gate the confirm button once the endpoint exists (see header, step 4).
   const [acknowledged, setAcknowledged] = useState(false);
 
   // The dialog container itself needs tabIndex={-1} so it can receive
@@ -69,7 +69,6 @@ export function DeleteAccountDialog({
   }, []);
 
   function handleClose() {
-    setAcknowledged(false);
     onClose();
     // Return focus to the element that opened the dialog.
     triggerRef?.current?.focus();
@@ -142,13 +141,7 @@ export function DeleteAccountDialog({
         </p>
 
         <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
-          {/*
-           * Confirm button – two layers of protection:
-           *   1. `acknowledged` must be true (checkbox above).
-           *   2. `disabled` hardcoded until DELETE /users/me is implemented.
-           * When wiring up: add `onClick={onConfirmed}`, remove the hardcoded
-           * `disabled`, and wire `onConfirmed` back into the props interface.
-           */}
+          {/* Hardcoded `disabled` until DELETE /users/me exists; see header for wiring up. */}
           <button
             type="button"
             disabled

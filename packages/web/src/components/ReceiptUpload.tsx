@@ -1,23 +1,14 @@
 /**
  * ReceiptUpload – file selection and validation for receipt photos.
  *
- * Intentionally decoupled from the API: it validates the file locally and
- * calls `onFileReady` with the selected File so the parent can issue the
- * presigned-URL request once that endpoint exists.
- *
- * What this component does NOT do:
- *  - Request a presigned URL   (POST /households/{id}/receipts – not yet built)
- *  - Upload to S3
- *  - Show processing status
- *
- * See docs/features/01-upload-processing.md for the full planned flow.
+ * Controlled: the parent owns the selected file and does the upload.
+ * See docs/features/01-upload-processing.md.
  */
-import { useId, useRef, useState } from 'react';
+import { useId, useState } from 'react';
+import { ContentType } from '@/api';
 
-const ACCEPTED_TYPES: Record<string, string> = {
-  'image/jpeg': '.jpg/.jpeg',
-  'image/png': '.png'
-};
+// PDF is allowed by the API but not offered yet (needs single-page check and resizing).
+const ACCEPTED_TYPES: string[] = [ContentType.ImageJpeg, ContentType.ImagePng];
 
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -28,7 +19,7 @@ function formatBytes(bytes: number): string {
 }
 
 function validate(file: File): string | null {
-  if (!Object.hasOwn(ACCEPTED_TYPES, file.type)) {
+  if (!ACCEPTED_TYPES.includes(file.type)) {
     return 'Nur JPG- und PNG-Dateien sind erlaubt.';
   }
   if (file.size > MAX_SIZE_BYTES) {
@@ -38,15 +29,19 @@ function validate(file: File): string | null {
 }
 
 export interface ReceiptUploadProps {
-  /** Called when a valid file is selected. Null means the selection was cleared. */
-  onFileReady: (file: File | null) => void;
+  /** The selected, already validated file; null when nothing is selected. */
+  file: File | null;
+  /** Called with a valid file, or null when the selection is cleared or invalid. */
+  onChange: (file: File | null) => void;
   /** Disables the control, e.g. while an upload is in progress. */
   disabled?: boolean;
 }
 
-export function ReceiptUpload({ onFileReady, disabled = false }: ReceiptUploadProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+export function ReceiptUpload({
+  file: selectedFile,
+  onChange,
+  disabled = false
+}: ReceiptUploadProps) {
   const [error, setError] = useState<string | null>(null);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -59,22 +54,17 @@ export function ReceiptUpload({ onFileReady, disabled = false }: ReceiptUploadPr
     const validationError = validate(file);
     if (validationError) {
       setError(validationError);
-      setSelectedFile(null);
-      onFileReady(null);
+      onChange(null);
       return;
     }
 
     setError(null);
-    setSelectedFile(file);
-    onFileReady(file);
+    onChange(file);
   }
 
   function handleRemove() {
-    setSelectedFile(null);
     setError(null);
-    onFileReady(null);
-    // Allow the same file to be selected again.
-    if (inputRef.current) inputRef.current.value = '';
+    onChange(null);
   }
 
   const inputId = useId();
@@ -83,10 +73,9 @@ export function ReceiptUpload({ onFileReady, disabled = false }: ReceiptUploadPr
     <div className="flex flex-col gap-2">
       {/* Hidden native file input */}
       <input
-        ref={inputRef}
         id={inputId}
         type="file"
-        accept={Object.keys(ACCEPTED_TYPES).join(',')}
+        accept={ACCEPTED_TYPES.join(',')}
         disabled={disabled}
         className="sr-only"
         aria-label="Kassenzettel-Foto auswählen"
@@ -114,13 +103,7 @@ export function ReceiptUpload({ onFileReady, disabled = false }: ReceiptUploadPr
         /* Empty state – click-to-browse trigger */
         <label
           htmlFor={inputId}
-          className={[
-            'flex cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500',
-            'hover:border-gray-400 hover:text-gray-700',
-            disabled ? 'cursor-not-allowed opacity-50' : ''
-          ]
-            .filter(Boolean)
-            .join(' ')}
+          className={`flex cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
         >
           <span className="text-2xl" aria-hidden="true">
             📄

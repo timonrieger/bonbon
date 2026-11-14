@@ -28,7 +28,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
   - Accepts JPG/PNG only (MIME-type check), rejects all other formats
   - Rejects files larger than 5 MB with a human-readable size in the error message
   - Shows selected filename and size; allows replacing or removing the file
-  - Calls `onFileReady(file | null)` so the parent can hold the file reference
+  - Controlled: the parent passes `file` and gets `onChange(file | null)`, so it owns the selection
 - `src/api/receipts.ts`: `uploadToS3(uploadUrl, uploadHeaders, file)`, a plain `fetch` PUT
   without the auth header (S3 rejects it) that forwards every header from `upload_headers`
 - `src/pages/HouseholdPage.tsx`: integrates `ReceiptUpload` and uploads in one `useMutation`:

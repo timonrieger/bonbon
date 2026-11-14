@@ -29,8 +29,9 @@
   - Keyboard-navigable; each input has an associated `<label>` via `useId()`-based IDs
   - Re-initialises when `receipt.id` changes (e.g. navigation between receipts); a refetch
     of the same receipt keeps unsaved edits
-- `src/api/receipts.ts`: added `ReceiptItemDraft`, `ReceiptDraft` (form state, prices in CHF),
-  `ReceiptCorrection`, `SaveReceiptCorrection` types and `formatRappen` helper
+  - Form state (`ReceiptDraft`, prices in CHF) and the `ReceiptCorrection` stand-in for the
+    PATCH body live in the component file
+- `src/api/receipts.ts`: added the `formatRappen` helper
 
 **Blocked on backend — needed for full integration:**
 

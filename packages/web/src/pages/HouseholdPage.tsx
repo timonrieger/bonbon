@@ -5,20 +5,6 @@ import { type ContentType, createReceipt, getHousehold } from '@/api';
 import { uploadToS3 } from '@/api/receipts';
 import { ReceiptUpload } from '@/components/ReceiptUpload';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface PendingUpload {
-  file: File;
-  content_type: ContentType;
-  size_bytes: number;
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
 export function HouseholdPage() {
   // biome-ignore lint/style/noNonNullAssertion: the route always has :householdId
   const householdId = useParams().householdId!;
@@ -27,45 +13,26 @@ export function HouseholdPage() {
     queryFn: () => getHousehold({ householdId })
   });
 
-  const [pending, setPending] = useState<PendingUpload | null>(null);
-  // Bumped after a successful upload to remount ReceiptUpload, which clears its
-  // internal file selection along with `pending`.
-  const [uploadKey, setUploadKey] = useState(0);
+  const [file, setFile] = useState<File | null>(null);
 
   const upload = useMutation({
-    mutationFn: async (p: PendingUpload) => {
+    mutationFn: async (photo: File) => {
       // Step 1: authenticated POST — get presigned URL + headers from the backend.
-      const { receipt_id, upload_url, upload_headers } = await createReceipt({
+      const { upload_url, upload_headers } = await createReceipt({
         householdId,
-        createReceiptRequest: {
-          content_type: p.content_type,
-          size_bytes: p.size_bytes
-        }
+        // ReceiptUpload only lets accepted content types through.
+        createReceiptRequest: { content_type: photo.type as ContentType, size_bytes: photo.size }
       });
 
       // Step 2: unauthenticated PUT — send raw bytes to S3 with all backend-supplied headers.
-      await uploadToS3(upload_url, upload_headers, p.file);
-
-      return receipt_id;
+      await uploadToS3(upload_url, upload_headers, photo);
     },
-    onSuccess: () => {
-      setPending(null);
-      setUploadKey((k) => k + 1);
-    }
+    onSuccess: () => setFile(null)
   });
 
-  function handleFileReady(file: File | null) {
+  function handleFileChange(next: File | null) {
     upload.reset();
-    if (!file) {
-      setPending(null);
-      return;
-    }
-    setPending({
-      file,
-      // ReceiptUpload already validated the type; cast is safe.
-      content_type: file.type as ContentType,
-      size_bytes: file.size
-    });
+    setFile(next);
   }
 
   if (household.isPending) return <p>Laden…</p>;
@@ -89,12 +56,12 @@ export function HouseholdPage() {
           Kassenzettel hochladen
         </h2>
 
-        <ReceiptUpload key={uploadKey} onFileReady={handleFileReady} disabled={upload.isPending} />
+        <ReceiptUpload file={file} onChange={handleFileChange} disabled={upload.isPending} />
 
-        {pending && (
+        {file && (
           <button
             type="button"
-            onClick={() => upload.mutate(pending)}
+            onClick={() => upload.mutate(file)}
             disabled={upload.isPending}
             className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto disabled:opacity-50"
           >
@@ -110,9 +77,7 @@ export function HouseholdPage() {
 
         {upload.isError && (
           <p role="alert" className="mt-2 text-sm text-red-600">
-            {upload.error instanceof Error
-              ? upload.error.message
-              : 'Upload fehlgeschlagen. Bitte versuche es erneut.'}
+            {upload.error.message}
           </p>
         )}
       </section>

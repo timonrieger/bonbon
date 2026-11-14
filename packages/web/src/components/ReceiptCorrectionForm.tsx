@@ -15,17 +15,51 @@
  */
 import { useId, useState } from 'react';
 import type { ReceiptDetail, ReceiptItem } from '@/api';
-import type {
-  ReceiptCorrection,
-  ReceiptDraft,
-  ReceiptItemDraft,
-  SaveReceiptCorrection
-} from '@/api/receipts';
 import { formatRappen } from '@/api/receipts';
 
 // ---------------------------------------------------------------------------
-// Types accepted by this component
+// Types
 // ---------------------------------------------------------------------------
+
+/**
+ * An editable snapshot of one receipt item (form state of ReceiptCorrectionForm).
+ * Numeric fields are strings so HTML inputs don't lose the user's partial input
+ * mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
+ */
+interface ReceiptItemDraft {
+  position: number; // read-only; identifies the item
+  name: string;
+  quantity: string;
+  unit_price_chf: string; // empty string means null
+  amount_chf: string; // required
+  category: string;
+}
+
+/**
+ * Editable header fields of a receipt (ReceiptDetail top-level fields).
+ * `total_rappen`, `status`, `image_url`, `created_at`, `uploaded_by_name`
+ * are read-only and not part of the draft.
+ */
+interface ReceiptDraft {
+  store: string; // empty string means null in the DB
+  purchase_date: string; // ISO date string "YYYY-MM-DD", empty means null
+  items: ReceiptItemDraft[];
+}
+
+/**
+ * A validated correction, converted back to the API's units (Rappen, numbers, null).
+ *
+ * TODO: replace with the generated PATCH request type once
+ *       PATCH /households/{id}/receipts/{id} exists and `mise run generate` ran.
+ */
+export interface ReceiptCorrection {
+  store: string | null;
+  purchase_date: string | null;
+  items: ReceiptItem[];
+}
+
+/** Callback for ReceiptCorrectionForm's onSave prop; the parent issues the PATCH request. */
+export type SaveReceiptCorrection = (correction: ReceiptCorrection) => void;
 
 export interface ReceiptCorrectionFormProps {
   /** Receipt as returned by GET /households/{id}/receipts/{id}. */
@@ -49,11 +83,17 @@ function rappenToInput(rappen: number | null): string {
   return (rappen / 100).toFixed(2);
 }
 
-function inputToRappen(value: string): number | null {
+/** Parse a non-negative decimal that may use a comma; null if empty or invalid. */
+function parseDecimal(value: string): number | null {
   if (value.trim() === '') return null;
   const n = Number.parseFloat(value.replace(',', '.'));
   if (Number.isNaN(n) || n < 0) return null;
-  return Math.round(n * 100);
+  return n;
+}
+
+function inputToRappen(value: string): number | null {
+  const chf = parseDecimal(value);
+  return chf === null ? null : Math.round(chf * 100);
 }
 
 function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
@@ -83,7 +123,7 @@ function draftToCorrection(draft: ReceiptDraft): ReceiptCorrection {
     items: draft.items.map((item) => ({
       position: item.position,
       name: item.name.trim(),
-      quantity: Number.parseFloat(item.quantity.replace(',', '.')),
+      quantity: parseDecimal(item.quantity) ?? 0,
       unit_price_rappen: inputToRappen(item.unit_price_chf),
       amount_rappen: inputToRappen(item.amount_chf) ?? 0,
       category: item.category.trim()
@@ -107,7 +147,6 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
   const rowId = `${baseId}-item-${item.position}`;
   return (
     <tr className="border-t border-gray-100">
-      {/* Name */}
       <td className="py-1.5 pr-2">
         <label className="sr-only" htmlFor={`${rowId}-name`}>
           Bezeichnung Pos. {item.position}
@@ -120,10 +159,8 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
           onChange={(e) => onChange(index, 'name', e.target.value)}
           className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
           required
-          aria-label={`Bezeichnung Pos. ${item.position}`}
         />
       </td>
-      {/* Quantity */}
       <td className="py-1.5 pr-2 w-20">
         <label className="sr-only" htmlFor={`${rowId}-qty`}>
           Menge Pos. {item.position}
@@ -139,7 +176,6 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
           className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
         />
       </td>
-      {/* Unit price */}
       <td className="py-1.5 pr-2 w-24">
         <label className="sr-only" htmlFor={`${rowId}-unit`}>
           Stückpreis Pos. {item.position} (CHF)
@@ -156,7 +192,6 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
           className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
         />
       </td>
-      {/* Amount */}
       <td className="py-1.5 pr-2 w-24">
         <label className="sr-only" htmlFor={`${rowId}-amt`}>
           Betrag Pos. {item.position} (CHF)
@@ -173,7 +208,6 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
           required
         />
       </td>
-      {/* Category */}
       <td className="py-1.5 w-32">
         <label className="sr-only" htmlFor={`${rowId}-cat`}>
           Kategorie Pos. {item.position}
@@ -197,7 +231,6 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
 // ---------------------------------------------------------------------------
 
 interface FormErrors {
-  store?: string;
   purchase_date?: string;
   items: Record<number, Partial<Record<keyof ReceiptItemDraft, string>>>;
 }
@@ -214,8 +247,7 @@ function validate(draft: ReceiptDraft): FormErrors {
     if (item.name.trim() === '') {
       itemErrors.name = 'Bezeichnung darf nicht leer sein.';
     }
-    const qty = Number.parseFloat(item.quantity.replace(',', '.'));
-    if (Number.isNaN(qty) || qty < 0) {
+    if (parseDecimal(item.quantity) === null) {
       itemErrors.quantity = 'Ungültige Menge.';
     }
     if (item.unit_price_chf.trim() !== '' && inputToRappen(item.unit_price_chf) === null) {
@@ -236,7 +268,7 @@ function validate(draft: ReceiptDraft): FormErrors {
 }
 
 function hasErrors(e: FormErrors): boolean {
-  return Boolean(e.store || e.purchase_date || Object.keys(e.items).length > 0);
+  return Boolean(e.purchase_date || Object.keys(e.items).length > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +283,6 @@ export function ReceiptCorrectionForm({
   const baseId = useId();
 
   const [draft, setDraft] = useState<ReceiptDraft>(() => receiptToDraft(receipt));
-  const [errors, setErrors] = useState<FormErrors>({ items: {} });
   const [submitted, setSubmitted] = useState(false);
 
   // Reset the draft only when a different receipt is shown. A refetch of the same
@@ -260,33 +291,27 @@ export function ReceiptCorrectionForm({
   if (receipt.id !== draftReceiptId) {
     setDraftReceiptId(receipt.id);
     setDraft(receiptToDraft(receipt));
-    setErrors({ items: {} });
     setSubmitted(false);
   }
 
-  const disabled = isSaving;
+  // Errors only show after the first submit attempt, then update as the user types.
+  const errors: FormErrors = submitted ? validate(draft) : { items: {} };
 
   function handleHeaderChange(field: 'store' | 'purchase_date', value: string) {
-    const next = { ...draft, [field]: value };
-    setDraft(next);
-    if (submitted) setErrors(validate(next));
+    setDraft({ ...draft, [field]: value });
   }
 
   function handleItemChange(index: number, field: keyof ReceiptItemDraft, value: string) {
     const nextItems = draft.items.map((item, i) =>
       i === index ? { ...item, [field]: value } : item
     );
-    const next = { ...draft, items: nextItems };
-    setDraft(next);
-    if (submitted) setErrors(validate(next));
+    setDraft({ ...draft, items: nextItems });
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitted(true);
-    const errs = validate(draft);
-    setErrors(errs);
-    if (hasErrors(errs)) return;
+    if (hasErrors(validate(draft))) return;
     onSave(draftToCorrection(draft));
   }
 
@@ -304,15 +329,10 @@ export function ReceiptCorrectionForm({
             type="text"
             value={draft.store}
             placeholder="Nicht erkannt"
-            disabled={disabled}
+            disabled={isSaving}
             onChange={(e) => handleHeaderChange('store', e.target.value)}
             className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
           />
-          {errors.store && (
-            <p role="alert" className="text-xs text-red-600">
-              {errors.store}
-            </p>
-          )}
         </div>
 
         {/* Purchase date */}
@@ -324,7 +344,7 @@ export function ReceiptCorrectionForm({
             id={`${baseId}-date`}
             type="date"
             value={draft.purchase_date}
-            disabled={disabled}
+            disabled={isSaving}
             onChange={(e) => handleHeaderChange('purchase_date', e.target.value)}
             className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
             aria-describedby={errors.purchase_date ? `${baseId}-date-error` : undefined}
@@ -366,7 +386,7 @@ export function ReceiptCorrectionForm({
                   item={item}
                   index={index}
                   baseId={baseId}
-                  disabled={disabled}
+                  disabled={isSaving}
                   onChange={handleItemChange}
                 />
               ))}
