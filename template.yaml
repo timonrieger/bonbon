@@ -13,14 +13,14 @@ Parameters:
     Type: String
     AllowedValues: [dev, prod]
     Default: dev
-  # The database and the Lambdas that use it live in the account's default VPC (only the
-  # `default` DB subnet group works in the Learner Lab). Looked up by .mise/tasks/stack-params.py.
+  # The database and the Lambdas that use it live in the account's default VPC.
+  # Looked up by .mise/tasks/stack-params.py.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: The account's default VPC
   LambdaSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Default-VPC subnets for Lambdas (without use1-az3, which Lambda doesn't support)
+    Description: Default-VPC subnets for Lambdas and the database (without use1-az3, which Lambda doesn't support)
 
 Globals:
   Function:
@@ -36,8 +36,8 @@ Globals:
 
 Resources:
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
-  # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows only the
-  # `default` DB subnet group, Single-AZ, no RDS Proxy and no IAM database auth.
+  # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows Single-AZ only,
+  # no RDS Proxy and no IAM database auth.
   Database:
     Type: AWS::RDS::DBInstance
     # Dev data is disposable. Switch both to Snapshot before the first prod deploy (ADR 0006).
@@ -55,7 +55,7 @@ Resources:
       StorageEncrypted: true
       MultiAZ: false
       PubliclyAccessible: false
-      DBSubnetGroupName: default
+      DBSubnetGroupName: !Ref DbSubnetGroup
       VPCSecurityGroups: [!GetAtt DbSecurityGroup.GroupId]
       DBName: bonbon
       MasterUsername: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"
@@ -64,6 +64,15 @@ Resources:
       DeletionProtection: false
       EnablePerformanceInsights: false
       AutoMinorVersionUpgrade: true
+
+  # Our own subnet group instead of `default`: RDS only creates `default` the first time an
+  # instance is launched without one, so fresh Learner Lab accounts don't have it, and the
+  # name is reserved, so it can't be created by hand (ADR 0006).
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub Default-VPC subnets for bonbon-${Stage}
+      SubnetIds: !Ref LambdaSubnetIds
 
   # Our own secrets without rotation. Not RDS-managed (ManageMasterUserPassword): that one
   # rotates every 7 days and the passwords below are resolved into Lambda environment
