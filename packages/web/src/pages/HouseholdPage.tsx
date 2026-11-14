@@ -1,25 +1,17 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { getHousehold } from '@/api';
-import type { ReceiptContentType } from '@/api/receipts';
+import { type ContentType, createReceipt, getHousehold } from '@/api';
+import { uploadToS3 } from '@/api/receipts';
 import { ReceiptUpload } from '@/components/ReceiptUpload';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/**
- * Everything the upload flow needs once it is wired up:
- *   1. POST /households/{id}/receipts  →  createReceipt(householdId, { content_type, size_bytes })
- *   2. PUT {upload_url}                →  uploadToS3(upload_url, file)
- *   3. Poll GET /households/{id}/receipts/{receipt_id} until status ≠ "uploaded|processing"
- *
- * See docs/features/01-upload-processing.md and src/api/receipts.ts.
- */
 interface PendingUpload {
   file: File;
-  content_type: ReceiptContentType;
+  content_type: ContentType;
   size_bytes: number;
 }
 
@@ -35,17 +27,31 @@ export function HouseholdPage() {
     queryFn: () => getHousehold({ householdId })
   });
 
-  /**
-   * Holds the validated file until the user clicks "Hochladen".
-   * Null when no file is selected or after a successful upload.
-   *
-   * The upload action itself (createReceipt + uploadToS3) is not yet wired up:
-   * POST /households/{id}/receipts does not exist in the backend.
-   * When it does, replace the disabled button below with a useMutation call.
-   */
   const [pending, setPending] = useState<PendingUpload | null>(null);
 
+  const upload = useMutation({
+    mutationFn: async (p: PendingUpload) => {
+      // Step 1: authenticated POST — get presigned URL + headers from the backend.
+      const { receipt_id, upload_url, upload_headers } = await createReceipt({
+        householdId,
+        createReceiptRequest: {
+          content_type: p.content_type,
+          size_bytes: p.size_bytes
+        }
+      });
+
+      // Step 2: unauthenticated PUT — send raw bytes to S3 with all backend-supplied headers.
+      await uploadToS3(upload_url, upload_headers, p.file);
+
+      return receipt_id;
+    },
+    onSuccess: () => {
+      setPending(null);
+    }
+  });
+
   function handleFileReady(file: File | null) {
+    upload.reset();
     if (!file) {
       setPending(null);
       return;
@@ -53,7 +59,7 @@ export function HouseholdPage() {
     setPending({
       file,
       // ReceiptUpload already validated the type; cast is safe.
-      content_type: file.type as ReceiptContentType,
+      content_type: file.type as ContentType,
       size_bytes: file.size
     });
   }
@@ -79,31 +85,30 @@ export function HouseholdPage() {
           Kassenzettel hochladen
         </h2>
 
-        <ReceiptUpload onFileReady={handleFileReady} />
+        <ReceiptUpload onFileReady={handleFileReady} disabled={upload.isPending} />
 
-        {/*
-         * Upload button – shown once a file is selected.
-         *
-         * Stays disabled until POST /households/{id}/receipts is implemented.
-         * To wire up: remove `disabled`, add onClick that calls
-         *   createReceipt(householdId, { content_type, size_bytes })
-         *   then uploadToS3(upload_url, file)
-         * Both are ready in src/api/receipts.ts.
-         */}
         {pending && (
           <button
             type="button"
-            disabled
-            className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white opacity-50 sm:w-auto"
-            title="Upload-Funktion wird demnächst verfügbar"
+            onClick={() => upload.mutate(pending)}
+            disabled={upload.isPending}
+            className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto disabled:opacity-50"
           >
-            Hochladen
+            {upload.isPending ? 'Wird hochgeladen…' : 'Hochladen'}
           </button>
         )}
 
-        {pending && (
-          <p className="mt-2 text-xs text-gray-500">
-            Der Upload wird verfügbar, sobald die Funktion fertiggestellt ist.
+        {upload.isSuccess && (
+          <p role="status" className="mt-2 text-sm text-green-700">
+            Kassenzettel erfolgreich hochgeladen. Er wird jetzt verarbeitet.
+          </p>
+        )}
+
+        {upload.isError && (
+          <p role="alert" className="mt-2 text-sm text-red-600">
+            {upload.error instanceof Error
+              ? upload.error.message
+              : 'Upload fehlgeschlagen. Bitte versuche es erneut.'}
           </p>
         )}
       </section>
