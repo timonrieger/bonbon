@@ -178,6 +178,12 @@ Resources:
           DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
           DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
       Events:
+        ListHouseholds:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households
+            Method: GET
         CreateHousehold:
           Type: Api
           Properties:
@@ -189,6 +195,12 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /households/{household_id}
+            Method: GET
+        ListMembers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/members
             Method: GET
 
   ReceiptsFunction:

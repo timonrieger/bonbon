@@ -27,6 +27,15 @@ export type ValidationError = {
 export type HttpValidationError = {
     detail?: ValidationError[];
 };
+export type Member = {
+    user_id: string;
+    display_name: string;
+    role: Role;
+    joined_at: string;
+};
+export type MemberList = {
+    members: Member[];
+};
 export type ReceiptSummary = {
     id: string;
     status: Status;
@@ -93,6 +102,9 @@ export type MonthTotal = {
 export type SpendingTrend = {
     months: MonthTotal[];
 };
+export type HouseholdList = {
+    households: Household[];
+};
 export type CreateHouseholdRequest = {
     name: string;
 };
@@ -115,6 +127,28 @@ export function getHousehold({ householdId }: {
         status: 422;
         data: HttpValidationError;
     }>(`/households/${encodeURIComponent(householdId)}`, {
+        ...opts
+    }));
+}
+/**
+ * GET /households/{household_id}/members
+ */
+export function listMembers({ householdId }: {
+    householdId: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: MemberList;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/members`, {
         ...opts
     }));
 }
@@ -242,6 +276,20 @@ export function getSpendingTrend({ householdId, months }: {
     }));
 }
 /**
+ * GET /households
+ */
+export function listHouseholds(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: HouseholdList;
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>("/households", {
+        ...opts
+    }));
+}
+/**
  * POST /households
  */
 export function createHousehold({ createHouseholdRequest }: {
@@ -260,6 +308,10 @@ export function createHousehold({ createHouseholdRequest }: {
     })));
 }
 export enum MyRole {
+    Owner = "owner",
+    Member = "member"
+}
+export enum Role {
     Owner = "owner",
     Member = "member"
 }

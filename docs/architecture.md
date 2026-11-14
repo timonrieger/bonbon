@@ -33,7 +33,7 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway | scaffolded | @timonrieger, @nosernoel |
 | RDS PostgreSQL, security groups, secrets, migration Lambda (`mise run db:migrate`) | scaffolded | @nosernoel |
-| Households API (create, get) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
+| Households API (list, create, get, members) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
@@ -61,12 +61,13 @@ Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials
 
 ## Data model
 
-PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrations/`](../packages/api/src/bonbon/migrations/) ([0006](decisions/0006-postgresql-on-rds.md)). Amounts are integers in Rappen. User ids are Cognito ids (`sub`); there is no users table.
+PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrations/`](../packages/api/src/bonbon/migrations/) ([0006](decisions/0006-postgresql-on-rds.md)). Amounts are integers in Rappen. User ids are Cognito ids (`sub`). Cognito handles sign-in; the `users` table keeps the display name and e-mail from the ID token, synced on every request in `bonbon/auth.py`.
 
 | Table | Key | Notes | Status |
 |---|---|---|---|
+| `users` | `user_id` (Cognito `sub`) | display_name (token `name`, or the e-mail prefix for accounts without one), email | implemented |
 | `households` | `id` uuid | name, created_at | implemented |
-| `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household | implemented |
+| `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household; a user with memberships can't be deleted | implemented |
 | `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
 | `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | schema only |
 | `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | schema only |
@@ -74,7 +75,7 @@ PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrat
 | `join_attempts` | `id` | rate limit for joining | schema only |
 | `schema_migrations` | `version` | applied migration files | implemented |
 
-Deleting a household cascades to memberships, invite codes and receipts; deleting a receipt cascades to its items. Monthly totals are computed with `GROUP BY` at query time, nothing is pre-aggregated.
+Deleting a household cascades to memberships, invite codes and receipts; deleting a receipt cascades to its items. Deleting a user sets `receipts.uploaded_by` to NULL and removes their join attempts; their memberships have to be gone first (account deletion leaves all households). Monthly totals are computed with `GROUP BY` at query time, nothing is pre-aggregated.
 
 ## Security
 
