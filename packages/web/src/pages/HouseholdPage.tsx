@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { type ContentType, createReceipt, getHousehold } from '@/api';
 import { uploadToS3 } from '@/api/receipts';
-import { ReceiptUpload } from '@/components/ReceiptUpload';
+import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
 
 export function HouseholdPage() {
   // biome-ignore lint/style/noNonNullAssertion: the route always has :householdId
@@ -20,7 +20,7 @@ export function HouseholdPage() {
       // Step 1: authenticated POST — get presigned URL + headers from the backend.
       const receiptUpload = await createReceipt({
         householdId,
-        // ReceiptUpload only lets accepted content types through.
+        // ReceiptFilePicker only lets accepted content types through.
         createReceiptRequest: { content_type: photo.type as ContentType, size_bytes: photo.size }
       });
 
@@ -56,7 +56,7 @@ export function HouseholdPage() {
           Kassenzettel hochladen
         </h2>
 
-        <ReceiptUpload file={file} onChange={handleFileChange} disabled={upload.isPending} />
+        <ReceiptFilePicker file={file} onChange={handleFileChange} disabled={upload.isPending} />
 
         {file && (
           <button

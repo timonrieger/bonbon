@@ -1,5 +1,5 @@
 /**
- * ReceiptUpload – file selection and validation for receipt photos.
+ * ReceiptFilePicker – file selection and validation for receipt photos.
  *
  * Controlled: the parent owns the selected file and does the upload.
  * See docs/features/01-upload-processing.md.
@@ -28,7 +28,7 @@ function validate(file: File): string | null {
   return null;
 }
 
-export interface ReceiptUploadProps {
+export interface ReceiptFilePickerProps {
   /** The selected, already validated file; null when nothing is selected. */
   file: File | null;
   /** Called with a valid file, or null when the selection is cleared or invalid. */
@@ -37,11 +37,11 @@ export interface ReceiptUploadProps {
   disabled?: boolean;
 }
 
-export function ReceiptUpload({
+export function ReceiptFilePicker({
   file: selectedFile,
   onChange,
   disabled = false
-}: ReceiptUploadProps) {
+}: ReceiptFilePickerProps) {
   const [error, setError] = useState<string | null>(null);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {

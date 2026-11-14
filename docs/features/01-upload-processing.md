@@ -24,14 +24,14 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 **Implemented** (`feat/frontend-rabit`):
 
-- `src/components/ReceiptUpload.tsx`: file picker with client-side validation
+- `src/components/ReceiptFilePicker.tsx`: file picker with client-side validation
   - Accepts JPG/PNG only (MIME-type check), rejects all other formats
   - Rejects files larger than 5 MB with a human-readable size in the error message
   - Shows selected filename and size; allows replacing or removing the file
   - Controlled: the parent passes `file` and gets `onChange(file | null)`, so it owns the selection
 - `src/api/receipts.ts`: `uploadToS3(receiptUpload, file)`, a plain `fetch` PUT
   without the auth header (S3 rejects it) that forwards every header from `upload_headers`
-- `src/pages/HouseholdPage.tsx`: integrates `ReceiptUpload` and uploads in one `useMutation`:
+- `src/pages/HouseholdPage.tsx`: integrates `ReceiptFilePicker` and uploads in one `useMutation`:
   `createReceipt` (generated, from `@/api`), then `uploadToS3`; shows success and error
   messages and clears the selection after a successful upload
 
