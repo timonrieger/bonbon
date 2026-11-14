@@ -21,6 +21,8 @@ class FakeDatabase:
         self.joined_at: dict[tuple[UUID, str], datetime] = {}
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
+        # receipt id -> (household id, uploaded_by)
+        self.receipts: dict[UUID, tuple[UUID, str]] = {}
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -76,3 +78,9 @@ class FakeDatabase:
         assert user_id in self.users, f"unknown user {user_id}"
         self.memberships[(household_id, user_id)] = role
         self.joined_at[(household_id, user_id)] = datetime.now(UTC)
+
+    # bonbon.receipts.repo
+    def create_receipt(self, household_id: str, uploaded_by: str) -> str:
+        receipt_id = uuid4()
+        self.receipts[receipt_id] = (UUID(household_id), uploaded_by)
+        return str(receipt_id)

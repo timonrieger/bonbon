@@ -30,7 +30,8 @@ def test_household_routes_document_404() -> None:
                 assert operation.responses and 404 in {int(c) for c in operation.responses}, (
                     f"{method.upper()} {path}: add responses=MEMBERSHIP_RESPONSES to the route"
                 )
-                ok = operation.responses.get(200) or operation.responses.get("200")
+                # 200, or 201 for routes that create something.
+                ok = next(r for c, r in operation.responses.items() if str(c).startswith("2"))
                 missing = operation.responses.get(404) or operation.responses.get("404")
                 assert ok and ok.content and missing and missing.content
                 # The 404 must describe the error body, not the route's return model.

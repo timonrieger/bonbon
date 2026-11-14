@@ -15,6 +15,13 @@
 - [ ] Members can leave, the owner can remove members; access ends immediately
 - [ ] Owner hands over the role before leaving; when the last member leaves, the household, its receipts and images are deleted
 
+## Rules
+
+- Every member can create invite codes, not only the owner.
+- A household can have several active invite codes at the same time; each one works once.
+- At most 5 failed join attempts per user and hour (`join_attempts`); further attempts are rejected until the hour has passed.
+- The owner can't leave without handing over the role first: the API answers `409`. The role passes automatically only on account deletion ([05](05-account-deletion.md)).
+
 ## Notes
 
 `households/` in the backend is the reference implementation for all other domains. Keep it clean.

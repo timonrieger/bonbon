@@ -11,6 +11,10 @@
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
 
+## Rules
+
+- Every member of the household can correct any receipt, not only the uploader.
+
 ## Notes
 
 - Textract is confirmed available in the Learner Lab (SW5 test, ~3.3 s per call, 5 calls/s limit).

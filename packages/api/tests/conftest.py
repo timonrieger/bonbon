@@ -12,6 +12,7 @@ os.environ.update(
     AWS_ACCESS_KEY_ID="testing",
     AWS_SECRET_ACCESS_KEY="testing",
     POWERTOOLS_SERVICE_NAME="bonbon-test",
+    RECEIPTS_BUCKET="bonbon-receipts-test",
 )
 
 
@@ -27,6 +28,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     """Replace every SQL function with an in-memory fake (see tests/fakes.py)."""
     from bonbon import auth, db
     from bonbon.households import repo as households
+    from bonbon.receipts import repo as receipts
     from bonbon.users import repo as users
 
     def no_real_database(*args: Any, **kwargs: Any) -> None:
@@ -39,6 +41,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(households, "get", fake.get_household)
     monkeypatch.setattr(households, "list_for_user", fake.list_households)
     monkeypatch.setattr(households, "list_members", fake.list_members)
+    monkeypatch.setattr(receipts, "create", fake.create_receipt)
     monkeypatch.setattr(users, "sync", fake.sync_user)
     # Every test starts with an empty per-container cache, like a cold start.
     monkeypatch.setattr(auth, "_synced", {})

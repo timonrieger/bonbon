@@ -220,6 +220,12 @@ Resources:
           DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
           DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
       Events:
+        CreateReceipt:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/receipts
+            Method: POST
         ListReceipts:
           Type: Api
           Properties:
