@@ -3,6 +3,7 @@
  *
  * See docs/features/01-upload-processing.md.
  */
+import type { ReceiptUpload } from '@/api';
 
 /** Convert Rappen (integer) to a display string "CHF 12.50". */
 export function formatRappen(rappen: number | null): string {
@@ -11,7 +12,7 @@ export function formatRappen(rappen: number | null): string {
 }
 
 /**
- * Upload a file directly to S3 using a presigned PUT URL.
+ * Upload a file directly to S3 using the presigned PUT URL from createReceipt.
  *
  * S3 presigned URLs must NOT carry an Authorization header — the credentials
  * are already embedded in the URL as query parameters. Plain `fetch` is used
@@ -23,14 +24,10 @@ export function formatRappen(rappen: number | null): string {
  *
  * @throws {Error} when the PUT does not return 200.
  */
-export async function uploadToS3(
-  uploadUrl: string,
-  uploadHeaders: Record<string, string>,
-  file: File
-): Promise<void> {
-  const response = await fetch(uploadUrl, {
+export async function uploadToS3(upload: ReceiptUpload, file: File): Promise<void> {
+  const response = await fetch(upload.upload_url, {
     method: 'PUT',
-    headers: uploadHeaders,
+    headers: upload.upload_headers,
     body: file
   });
 

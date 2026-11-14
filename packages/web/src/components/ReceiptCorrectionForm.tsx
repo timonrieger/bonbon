@@ -22,41 +22,26 @@ import { formatRappen } from '@/api/receipts';
 // ---------------------------------------------------------------------------
 
 /**
- * An editable snapshot of one receipt item (form state of ReceiptCorrectionForm).
- * Numeric fields are strings so HTML inputs don't lose the user's partial input
- * mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
+ * Form state of one ReceiptItem. Numeric fields are strings so HTML inputs don't
+ * lose the user's partial input mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
+ * An empty `unit_price_chf` means null.
  */
-interface ReceiptItemDraft {
-  position: number; // read-only; identifies the item
-  name: string;
+type ReceiptItemDraft = Pick<ReceiptItem, 'position' | 'name' | 'category'> & {
   quantity: string;
-  unit_price_chf: string; // empty string means null
-  amount_chf: string; // required
-  category: string;
-}
+  unit_price_chf: string;
+  amount_chf: string;
+};
+
+/** Form state of the editable ReceiptDetail fields; an empty string means null. */
+type ReceiptDraft = Record<'store' | 'purchase_date', string> & { items: ReceiptItemDraft[] };
 
 /**
- * Editable header fields of a receipt (ReceiptDetail top-level fields).
- * `total_rappen`, `status`, `image_url`, `created_at`, `uploaded_by_name`
- * are read-only and not part of the draft.
- */
-interface ReceiptDraft {
-  store: string; // empty string means null in the DB
-  purchase_date: string; // ISO date string "YYYY-MM-DD", empty means null
-  items: ReceiptItemDraft[];
-}
-
-/**
- * A validated correction, converted back to the API's units (Rappen, numbers, null).
+ * The editable part of ReceiptDetail, validated and back in API units.
  *
  * TODO: replace with the generated PATCH request type once
  *       PATCH /households/{id}/receipts/{id} exists and `mise run generate` ran.
  */
-export interface ReceiptCorrection {
-  store: string | null;
-  purchase_date: string | null;
-  items: ReceiptItem[];
-}
+export type ReceiptCorrection = Pick<ReceiptDetail, 'store' | 'purchase_date' | 'items'>;
 
 /** Callback for ReceiptCorrectionForm's onSave prop; the parent issues the PATCH request. */
 export type SaveReceiptCorrection = (correction: ReceiptCorrection) => void;

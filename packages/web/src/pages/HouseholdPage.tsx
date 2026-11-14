@@ -18,14 +18,14 @@ export function HouseholdPage() {
   const upload = useMutation({
     mutationFn: async (photo: File) => {
       // Step 1: authenticated POST — get presigned URL + headers from the backend.
-      const { upload_url, upload_headers } = await createReceipt({
+      const receiptUpload = await createReceipt({
         householdId,
         // ReceiptUpload only lets accepted content types through.
         createReceiptRequest: { content_type: photo.type as ContentType, size_bytes: photo.size }
       });
 
       // Step 2: unauthenticated PUT — send raw bytes to S3 with all backend-supplied headers.
-      await uploadToS3(upload_url, upload_headers, photo);
+      await uploadToS3(receiptUpload, photo);
     },
     onSuccess: () => setFile(null)
   });
