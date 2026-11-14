@@ -4,8 +4,8 @@
  * Shows the recognised header (store, date, total) and all line items.
  * Every field that the data model allows to be corrected is an editable input.
  * The component is intentionally decoupled from the API: it validates locally,
- * then calls `onSave(draft)` so the parent can issue the PATCH request once
- * PATCH /households/{id}/receipts/{id} exists.
+ * converts the draft back to Rappen and calls `onSave(correction)` so the parent
+ * can issue the PATCH request once PATCH /households/{id}/receipts/{id} exists.
  *
  * What this component does NOT do:
  *  - Fetch receipt data  (GET /households/{id}/receipts/{id} – returns 501 today)
@@ -15,7 +15,12 @@
  */
 import { useId, useState } from 'react';
 import type { ReceiptDetail, ReceiptItem } from '@/api';
-import type { ReceiptDraft, ReceiptItemDraft, SaveReceiptDraft } from '@/api/receipts';
+import type {
+  ReceiptCorrection,
+  ReceiptDraft,
+  ReceiptItemDraft,
+  SaveReceiptCorrection
+} from '@/api/receipts';
 import { formatRappen } from '@/api/receipts';
 
 // ---------------------------------------------------------------------------
@@ -26,11 +31,11 @@ export interface ReceiptCorrectionFormProps {
   /** Receipt as returned by GET /households/{id}/receipts/{id}. */
   receipt: ReceiptDetail;
   /**
-   * Called when the user submits a valid correction.
-   * Disabled (button is not interactive) until the PATCH endpoint exists.
+   * Called with the validated correction (in Rappen) when the user submits.
+   * The save button stays disabled until the PATCH endpoint exists.
    * Pass a no-op `() => {}` for now; wire up `useMutation` later.
    */
-  onSave: SaveReceiptDraft;
+  onSave: SaveReceiptCorrection;
   /** Whether a save operation is currently in flight (disables the form). */
   isSaving?: boolean;
 }
@@ -56,8 +61,8 @@ function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
     position: item.position,
     name: item.name,
     quantity: String(item.quantity),
-    unit_price_rappen: rappenToInput(item.unit_price_rappen),
-    amount_rappen: rappenToInput(item.amount_rappen),
+    unit_price_chf: rappenToInput(item.unit_price_rappen),
+    amount_chf: rappenToInput(item.amount_rappen),
     category: item.category
   };
 }
@@ -67,6 +72,22 @@ function receiptToDraft(receipt: ReceiptDetail): ReceiptDraft {
     store: receipt.store ?? '',
     purchase_date: receipt.purchase_date ?? '',
     items: receipt.items.map(itemToDraft)
+  };
+}
+
+/** Convert a validated draft back to API units. Only call after validate() passed. */
+function draftToCorrection(draft: ReceiptDraft): ReceiptCorrection {
+  return {
+    store: draft.store.trim() === '' ? null : draft.store.trim(),
+    purchase_date: draft.purchase_date === '' ? null : draft.purchase_date,
+    items: draft.items.map((item) => ({
+      position: item.position,
+      name: item.name.trim(),
+      quantity: Number.parseFloat(item.quantity.replace(',', '.')),
+      unit_price_rappen: inputToRappen(item.unit_price_chf),
+      amount_rappen: inputToRappen(item.amount_chf) ?? 0,
+      category: item.category.trim()
+    }))
   };
 }
 
@@ -126,12 +147,12 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
         <input
           id={`${rowId}-unit`}
           type="number"
-          value={item.unit_price_rappen}
+          value={item.unit_price_chf}
           placeholder="–"
           min="0"
           step="0.05"
           disabled={disabled}
-          onChange={(e) => onChange(index, 'unit_price_rappen', e.target.value)}
+          onChange={(e) => onChange(index, 'unit_price_chf', e.target.value)}
           className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
         />
       </td>
@@ -143,11 +164,11 @@ function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
         <input
           id={`${rowId}-amt`}
           type="number"
-          value={item.amount_rappen}
+          value={item.amount_chf}
           min="0"
           step="0.05"
           disabled={disabled}
-          onChange={(e) => onChange(index, 'amount_rappen', e.target.value)}
+          onChange={(e) => onChange(index, 'amount_chf', e.target.value)}
           className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
           required
         />
@@ -194,11 +215,14 @@ function validate(draft: ReceiptDraft): FormErrors {
       itemErrors.name = 'Bezeichnung darf nicht leer sein.';
     }
     const qty = Number.parseFloat(item.quantity.replace(',', '.'));
-    if (item.quantity.trim() !== '' && (Number.isNaN(qty) || qty < 0)) {
+    if (Number.isNaN(qty) || qty < 0) {
       itemErrors.quantity = 'Ungültige Menge.';
     }
-    if (inputToRappen(item.amount_rappen) === null) {
-      itemErrors.amount_rappen = 'Betrag fehlt oder ist ungültig.';
+    if (item.unit_price_chf.trim() !== '' && inputToRappen(item.unit_price_chf) === null) {
+      itemErrors.unit_price_chf = 'Ungültiger Stückpreis.';
+    }
+    if (inputToRappen(item.amount_chf) === null) {
+      itemErrors.amount_chf = 'Betrag fehlt oder ist ungültig.';
     }
     if (item.category.trim() === '') {
       itemErrors.category = 'Kategorie darf nicht leer sein.';
@@ -263,7 +287,7 @@ export function ReceiptCorrectionForm({
     const errs = validate(draft);
     setErrors(errs);
     if (hasErrors(errs)) return;
-    onSave(draft);
+    onSave(draftToCorrection(draft));
   }
 
   return (

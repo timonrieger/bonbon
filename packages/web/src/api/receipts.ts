@@ -6,26 +6,23 @@
  *
  * See docs/features/01-upload-processing.md for the full planned flow.
  */
+import type { ReceiptItem } from '@/api';
 
 // ---------------------------------------------------------------------------
 // Correction types
 // ---------------------------------------------------------------------------
 
 /**
- * An editable snapshot of one receipt item.
- * Mirrors ReceiptItem from the contract branch (feat/receipts-reports-contract),
- * but with `position` omitted (read-only display only) and all numeric fields as
- * strings so HTML inputs don't lose the user's partial input mid-edit.
- *
- * TODO: once GET /households/{id}/receipts/{id} returns real data and a PATCH
- *       endpoint exists, align with the generated types from client.gen.ts.
+ * An editable snapshot of one receipt item (form state of ReceiptCorrectionForm).
+ * Numeric fields are strings so HTML inputs don't lose the user's partial input
+ * mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
  */
 export interface ReceiptItemDraft {
   position: number; // read-only; identifies the item
   name: string;
-  quantity: string; // number stored as string for <input> editing
-  unit_price_rappen: string; // empty string means null
-  amount_rappen: string; // required; must be a positive integer
+  quantity: string;
+  unit_price_chf: string; // empty string means null
+  amount_chf: string; // required
   category: string;
 }
 
@@ -41,16 +38,19 @@ export interface ReceiptDraft {
 }
 
 /**
- * Callback type for the ReceiptCorrectionForm's onSave prop.
+ * A validated correction, converted back to the API's units (Rappen, numbers, null).
  *
- * The parent is responsible for the actual PATCH request once
- * PATCH /households/{id}/receipts/{id} exists.
- * Until then, the button that triggers this remains disabled.
- *
- * TODO: replace `ReceiptDraft` with the generated PATCH request type
- *       after `mise run generate`.
+ * TODO: replace with the generated PATCH request type once
+ *       PATCH /households/{id}/receipts/{id} exists and `mise run generate` ran.
  */
-export type SaveReceiptDraft = (draft: ReceiptDraft) => void;
+export interface ReceiptCorrection {
+  store: string | null;
+  purchase_date: string | null;
+  items: ReceiptItem[];
+}
+
+/** Callback for ReceiptCorrectionForm's onSave prop; the parent issues the PATCH request. */
+export type SaveReceiptCorrection = (correction: ReceiptCorrection) => void;
 
 // ---------------------------------------------------------------------------
 // Helpers
