@@ -23,17 +23,19 @@
   - `total_rappen`, `status`, `image_url`, `position` are read-only (computed or backend-owned)
   - Local validation: empty names/categories, invalid amounts, malformed date
   - Error messages shown per field with `role="alert"`; form re-validates on change after first submit attempt
-  - `onSave(draft: ReceiptDraft)` callback — parent is responsible for the PATCH call
+  - `onSave(correction: ReceiptCorrection)` callback with the validated values converted
+    back to API units (Rappen, numbers, `null`) — parent is responsible for the PATCH call
   - Save button is `disabled` until PATCH endpoint exists; no fake save, no mock
   - Keyboard-navigable; each input has an associated `<label>` via `useId()`-based IDs
-  - Re-initialises cleanly when `receipt.id` changes (e.g. navigation between receipts)
-- `src/api/receipts.ts`: added `ReceiptItemDraft`, `ReceiptDraft`, `SaveReceiptDraft` types and `formatRappen` helper
+  - Re-initialises when `receipt.id` changes (e.g. navigation between receipts); a refetch
+    of the same receipt keeps unsaved edits
+- `src/api/receipts.ts`: added `ReceiptItemDraft`, `ReceiptDraft` (form state, prices in CHF),
+  `ReceiptCorrection`, `SaveReceiptCorrection` types and `formatRappen` helper
 
 **Blocked on backend — needed for full integration:**
 
 1. `GET /households/{id}/receipts/{id}` must return real data (SQL) instead of 501.
-   The TypeScript types (`ReceiptDetailProps` in `ReceiptCorrectionForm.tsx`) match
-   the `ReceiptDetail` shape from `feat/receipts-reports-contract`.
+   The form takes the generated `ReceiptDetail` type from `@/api`.
 2. A `PATCH /households/{id}/receipts/{id}` endpoint is needed to save corrections.
    The request body type is not yet designed. Suggested shape (coordinate with @Dam-Mil):
    ```json
@@ -52,7 +54,7 @@
 
 **To wire up once PATCH is deployed:**
 
-1. Run `mise run generate` — `ReceiptDraft` types will come from `@/api`
+1. Run `mise run generate` — replace `ReceiptCorrection` with the generated PATCH request type
 2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
    data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
 3. Remove the `disabled` from the save button

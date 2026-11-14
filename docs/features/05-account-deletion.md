@@ -21,14 +21,13 @@
 - `src/components/DeleteAccountDialog.tsx`: single-step confirmation dialog
   - Explains all three consequences (sole-member households deleted, shared
     households: user removed and owner role transferred, action irreversible)
-  - Checkbox acknowledgement: the confirm button only becomes clickable after
-    the user ticks "Ich habe die Konsequenzen gelesen …"
+  - Checkbox acknowledgement "Ich habe die Konsequenzen gelesen …"; once the
+    endpoint exists, the confirm button should only become clickable after it is ticked
   - Visible in-dialog notice: *„Die Kontolöschung ist noch nicht verfügbar"*
-  - `onConfirmed()` callback (no parameters) — parent is responsible for the
-    API call and subsequent `signOut()`; `onConfirmed` is not attached to the
-    button while it is `disabled`, so no accidental trigger path exists
-  - Confirm button has two guards: checkbox state + hardcoded `disabled` until
-    the backend endpoint exists; no fake deletion, no simulated success message
+  - No `onConfirmed` callback yet: it is added together with the endpoint, so no
+    accidental trigger path exists
+  - Confirm button is hardcoded `disabled` until the backend endpoint exists;
+    no fake deletion, no simulated success message
   - Escape key closes the dialog unless `isSaving` is true
   - `isSaving` prop disables all controls during an in-flight deletion request
   - Initial focus: `useEffect` focuses the dialog container (`tabIndex={-1}`)
@@ -37,9 +36,9 @@
     closes, returning keyboard users to the "Konto löschen" button
   - All interactive elements labelled via `useId()`-based IDs;
     `aria-modal`, `role="dialog"`, `aria-labelledby`, `aria-describedby`
-- `src/App.tsx`: "Konto löschen" link in the header opens the dialog;
-  `fetchUserAttributes()` loads the email once on mount (cached by Amplify)
-  for display only; `deleteButtonRef` passed as `triggerRef` to restore focus
+- `src/App.tsx`: "Konto löschen" link in the header opens the dialog; the email
+  shown comes from `useAuthenticator()` (the login id, since users sign in with
+  their email); `deleteButtonRef` passed as `triggerRef` to restore focus
 
 **Why no password re-authentication in the dialog:**
 Amplify v6 throws `UserAlreadyAuthenticatedException` when `signIn()` is called
@@ -64,7 +63,8 @@ frontend bypasses the entire cleanup pipeline.
    // onConfirmed:
    del.mutate(undefined, { onSuccess: () => signOut() });
    ```
-4. Add `onClick={onConfirmed}` to the confirm button and remove the hardcoded `disabled`
+4. Add `onClick={onConfirmed}` to the confirm button and replace the hardcoded
+   `disabled` with `disabled={!acknowledged || isSaving}`
 5. Pass `isSaving={del.isPending}` to `<DeleteAccountDialog>`
 
 ### Backend / worker — @Dam-Mil
