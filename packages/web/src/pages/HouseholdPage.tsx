@@ -28,6 +28,9 @@ export function HouseholdPage() {
   });
 
   const [pending, setPending] = useState<PendingUpload | null>(null);
+  // Bumped after a successful upload to remount ReceiptUpload, which clears its
+  // internal file selection along with `pending`.
+  const [uploadKey, setUploadKey] = useState(0);
 
   const upload = useMutation({
     mutationFn: async (p: PendingUpload) => {
@@ -47,6 +50,7 @@ export function HouseholdPage() {
     },
     onSuccess: () => {
       setPending(null);
+      setUploadKey((k) => k + 1);
     }
   });
 
@@ -85,7 +89,7 @@ export function HouseholdPage() {
           Kassenzettel hochladen
         </h2>
 
-        <ReceiptUpload onFileReady={handleFileReady} disabled={upload.isPending} />
+        <ReceiptUpload key={uploadKey} onFileReady={handleFileReady} disabled={upload.isPending} />
 
         {pending && (
           <button
