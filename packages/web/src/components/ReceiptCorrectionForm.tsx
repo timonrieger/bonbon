@@ -13,7 +13,7 @@
  *
  * See docs/features/02-extraction-categorization.md.
  */
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import type { ReceiptDetail, ReceiptItem } from '@/api';
 import type { ReceiptDraft, ReceiptItemDraft, SaveReceiptDraft } from '@/api/receipts';
 import { formatRappen } from '@/api/receipts';
@@ -59,6 +59,14 @@ function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
     unit_price_rappen: rappenToInput(item.unit_price_rappen),
     amount_rappen: rappenToInput(item.amount_rappen),
     category: item.category
+  };
+}
+
+function receiptToDraft(receipt: ReceiptDetail): ReceiptDraft {
+  return {
+    store: receipt.store ?? '',
+    purchase_date: receipt.purchase_date ?? '',
+    items: receipt.items.map(itemToDraft)
   };
 }
 
@@ -218,28 +226,19 @@ export function ReceiptCorrectionForm({
 }: ReceiptCorrectionFormProps) {
   const baseId = useId();
 
-  const [draft, setDraft] = useState<ReceiptDraft>(() => ({
-    store: receipt.store ?? '',
-    purchase_date: receipt.purchase_date ?? '',
-    items: receipt.items.map(itemToDraft)
-  }));
+  const [draft, setDraft] = useState<ReceiptDraft>(() => receiptToDraft(receipt));
   const [errors, setErrors] = useState<FormErrors>({ items: {} });
   const [submitted, setSubmitted] = useState(false);
 
-  // Re-initialise the local draft when the receipt prop changes to a different
-  // receipt. Using `receipt` as the single dependency is correct: when id
-  // changes a new object is passed, triggering the reset; edits to the local
-  // draft (via setDraft) do not involve the `receipt` prop, so user input is
-  // not lost on unrelated parent re-renders that pass the same receipt object.
-  useEffect(() => {
-    setDraft({
-      store: receipt.store ?? '',
-      purchase_date: receipt.purchase_date ?? '',
-      items: receipt.items.map(itemToDraft)
-    });
+  // Reset the draft only when a different receipt is shown. A refetch of the same
+  // receipt (new object, same id) must not wipe the user's unsaved edits.
+  const [draftReceiptId, setDraftReceiptId] = useState(receipt.id);
+  if (receipt.id !== draftReceiptId) {
+    setDraftReceiptId(receipt.id);
+    setDraft(receiptToDraft(receipt));
     setErrors({ items: {} });
     setSubmitted(false);
-  }, [receipt]);
+  }
 
   const disabled = isSaving;
 
