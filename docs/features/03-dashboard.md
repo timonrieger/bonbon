@@ -27,6 +27,7 @@ The models are fixed so the dashboard can be built against them; the routes answ
 ## Rules
 
 - Only receipts with status `done` count; duplicates and failed receipts are left out.
+- Only the same file (file hash) makes a receipt a `duplicate`. Two receipts with the same store, date and total are both kept as `done` and both count, because a household can buy the same thing twice on one day. The API marks such a receipt as a possible duplicate so the UI can point it out; the member decides. The field name is fixed with the receipt list SQL.
 - A receipt without a recognized purchase date counts towards the month it was uploaded in (`COALESCE(purchase_date, created_at::date)`). The API returns `purchase_date: null` for it, so the UI can point it out. The worker stores `NULL` rather than guessing a date.
 
 ## Notes
