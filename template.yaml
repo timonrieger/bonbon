@@ -55,7 +55,8 @@ Resources:
       StorageEncrypted: true
       MultiAZ: false
       PubliclyAccessible: false
-      DBSubnetGroupName: default
+      # No DBSubnetGroupName on purpose: RDS then uses the `default` group in the default VPC
+      # and creates it if the account has none. Naming `default` explicitly fails in a fresh lab.
       VPCSecurityGroups: [!GetAtt DbSecurityGroup.GroupId]
       DBName: bonbon
       MasterUsername: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"

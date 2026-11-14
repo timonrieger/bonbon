@@ -8,7 +8,7 @@ The reports (totals per month, category and store, receipt lists, household memb
 
 Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
-- RDS PostgreSQL 18 on `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not public: works. Only the `default` DB subnet group can be used (own subnet groups fail), so the database lives in the default VPC.
+- RDS PostgreSQL 18 on `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not public: works. Only the `default` DB subnet group can be used (own subnet groups fail), so the database lives in the default VPC. A fresh lab has no `default` group; RDS creates it on the first instance that names no subnet group, while naming `default` explicitly fails because the group does not exist (tested 2026-11-14).
 - A Lambda with `LabRole` runs in the default VPC and connects (TCP 20 ms; login plus first query 216 ms on a cold start, about 40 ms warm). `max_connections` is 79.
 - Blocked: Aurora Serverless v2 (with or without Data API), Aurora DSQL (`dsql:CreateCluster` missing for `voclabs` and `LabRole`), RDS IAM database authentication (`LabRole` has no `rds-db:connect`; login fails with "PAM authentication failed").
 - From inside the VPC without NAT, Textract, Secrets Manager and SNS are unreachable (calls hang until the connect timeout). S3 works through a free gateway endpoint.
@@ -18,7 +18,7 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
 ## Decision
 
-- Amazon RDS for PostgreSQL 18, `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not publicly accessible, `default` DB subnet group. One instance per stack (`bonbon-<stage>`).
+- Amazon RDS for PostgreSQL 18, `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not publicly accessible, `default` DB subnet group by leaving `DBSubnetGroupName` unset. One instance per stack (`bonbon-<stage>`).
 - PostgreSQL rather than MySQL: `date_trunc` and `FILTER` for reports, native `uuid`, `CHECK` constraints and partial unique indexes, transactional schema migrations. Rather than Aurora: the smallest Aurora instance costs several times more and its extras are blocked or not needed.
 - Lambdas that use the database run in the VPC with their own security group; the database security group allows port 5432 only from it. VPC and subnet ids are stack parameters looked up by `.mise/tasks/stack-params.py`, never hard-coded.
 - TLS with certificate and hostname verification against the RDS CA bundle shipped in `bonbon/certs/global-bundle.pem`.
