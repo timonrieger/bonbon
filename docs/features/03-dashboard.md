@@ -11,6 +11,25 @@
 - [ ] Duplicates are excluded from all totals
 - [ ] Totals are current within a few seconds of a change
 
+## API
+
+All routes check membership (404 for non-members). Amounts are integers in Rappen, months are `YYYY-MM`.
+
+| Route | Frontend function | Returns |
+|---|---|---|
+| `GET /households/{household_id}/receipts?month=` | `listReceipts` | All receipts, newest purchase date first (upload date if none, then latest upload); `month` is optional |
+| `GET /households/{household_id}/receipts/{receipt_id}` | `getReceipt` | Receipt with items and a presigned `image_url` |
+| `GET /households/{household_id}/reports/monthly?month=` | `getMonthlyReport` | Total, receipt count, per category, per store, previous month's total |
+| `GET /households/{household_id}/reports/trend?months=6` | `getSpendingTrend` | Total per month, oldest first, months without spending as 0 (`months` 1–24) |
+
+The models are fixed so the dashboard can be built against them; the routes answer 501 until the SQL is in place. The 501 is temporary and therefore not part of the OpenAPI spec; the 404 is.
+
+## Rules
+
+- Only receipts with status `done` count; duplicates and failed receipts are left out.
+- Only the same file (file hash) makes a receipt a `duplicate`. Two receipts with the same store, date and total are both kept as `done` and both count, because a household can buy the same thing twice on one day. The API marks such a receipt as a possible duplicate so the UI can point it out; the member decides. The field name is fixed with the receipt list SQL.
+- A receipt without a recognized purchase date counts towards the month it was uploaded in (`COALESCE(purchase_date, created_at::date)`). The API returns `purchase_date: null` for it, so the UI can point it out. The worker stores `NULL` rather than guessing a date.
+
 ## Notes
 
 - Nothing is pre-aggregated; the `(household_id, purchase_date)` index on `receipts` keeps the queries fast.

@@ -30,27 +30,11 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        TABLE_NAME: !Ref Table
         RECEIPTS_BUCKET: !Ref ReceiptsBucket
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
 
 Resources:
-  # Single table for all data, see docs/architecture.md#data-model.
-  Table:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub bonbon-${Stage}
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - { AttributeName: PK, AttributeType: S }
-        - { AttributeName: SK, AttributeType: S }
-      KeySchema:
-        - { AttributeName: PK, KeyType: HASH }
-        - { AttributeName: SK, KeyType: RANGE }
-      SSESpecification:
-        SSEEnabled: true
-
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
   # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows only the
   # `default` DB subnet group, Single-AZ, no RDS Proxy and no IAM database auth.
@@ -175,7 +159,7 @@ Resources:
   # Every route in the Python router needs a matching event here.
   # Functions that use the database run in the VPC and hold one connection per container.
   # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
-  # today Households 20 + Migrate 1.
+  # today Households 20 + Receipts 10 + Reports 10 + Migrate 1 = 41.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -205,6 +189,72 @@ Resources:
           Properties:
             RestApiId: !Ref Api
             Path: /households/{household_id}
+            Method: GET
+
+  ReceiptsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.receipts.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 15
+      ReservedConcurrentExecutions: 10
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+      Events:
+        CreateReceipt:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/receipts
+            Method: POST
+        ListReceipts:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/receipts
+            Method: GET
+        GetReceipt:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/receipts/{receipt_id}
+            Method: GET
+
+  ReportsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.reports.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 15
+      ReservedConcurrentExecutions: 10
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+      Events:
+        GetMonthlyReport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/reports/monthly
+            Method: GET
+        GetSpendingTrend:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/reports/trend
             Method: GET
 
   # Receipt photos and PDFs. Uploaded by the browser via presigned URL, keys built in

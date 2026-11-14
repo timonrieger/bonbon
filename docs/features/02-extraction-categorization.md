@@ -56,6 +56,9 @@
 2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
    data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
 3. Remove the `disabled` from the save button
+## Rules
+
+- Every member of the household can correct any receipt, not only the uploader.
 
 ## Notes
 
