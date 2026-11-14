@@ -1,6 +1,5 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
-import { fetchUserAttributes } from 'aws-amplify/auth';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, Route, Routes } from 'react-router';
 import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -8,22 +7,13 @@ import { HomePage } from '@/pages/HomePage';
 import { HouseholdPage } from '@/pages/HouseholdPage';
 
 export function App() {
-  const { signOut } = useAuthenticator();
+  const { signOut, user } = useAuthenticator((context) => [context.user]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
+  // Users sign in with their email (UsernameAttributes: email), so the login id is the email.
+  const userEmail = user?.signInDetails?.loginId ?? '';
 
   // Ref to the trigger button so focus returns there when the dialog closes.
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
-
-  // Fetch the email once so the deletion dialog can display it.
-  // fetchUserAttributes() is cheap (cached by Amplify).
-  useEffect(() => {
-    fetchUserAttributes()
-      .then((attrs) => setUserEmail(attrs.email ?? ''))
-      .catch(() => {
-        // Non-critical: if this fails the dialog still works, email will be empty.
-      });
-  }, []);
 
   return (
     <div className="mx-auto max-w-3xl p-4">
