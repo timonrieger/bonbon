@@ -7,7 +7,8 @@ export function HomePage() {
   const [name, setName] = useState('');
   const navigate = useNavigate();
   const create = useMutation({
-    mutationFn: () => createHousehold({ createHouseholdRequest: { name } }),
+    mutationFn: (householdName: string) =>
+      createHousehold({ createHouseholdRequest: { name: householdName } }),
     onSuccess: (household) => navigate(`/households/${household.id}`)
   });
 
@@ -16,7 +17,7 @@ export function HomePage() {
       className="flex gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        create.mutate();
+        create.mutate(name.trim());
       }}
     >
       <input
@@ -27,7 +28,7 @@ export function HomePage() {
       />
       <button
         type="submit"
-        disabled={create.isPending}
+        disabled={create.isPending || name.trim() === ''}
         className="rounded bg-black px-4 py-2 text-white"
       >
         Haushalt erstellen
