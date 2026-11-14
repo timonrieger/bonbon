@@ -14,6 +14,7 @@
  * See docs/features/02-extraction-categorization.md.
  */
 import { useEffect, useId, useState } from 'react';
+import type { ReceiptDetail, ReceiptItem } from '@/api';
 import type { ReceiptDraft, ReceiptItemDraft, SaveReceiptDraft } from '@/api/receipts';
 import { formatRappen } from '@/api/receipts';
 
@@ -21,28 +22,9 @@ import { formatRappen } from '@/api/receipts';
 // Types accepted by this component
 // ---------------------------------------------------------------------------
 
-/** Read-only receipt data as returned by GET /households/{id}/receipts/{id}. */
-export interface ReceiptDetailProps {
-  id: string;
-  status: 'uploaded' | 'processing' | 'done' | 'failed' | 'duplicate';
-  store: string | null;
-  purchase_date: string | null; // ISO date "YYYY-MM-DD" or null
-  total_rappen: number | null;
-  uploaded_by_name: string | null;
-  created_at: string; // ISO datetime
-  image_url: string;
-  items: Array<{
-    position: number;
-    name: string;
-    quantity: number;
-    unit_price_rappen: number | null;
-    amount_rappen: number;
-    category: string;
-  }>;
-}
-
 export interface ReceiptCorrectionFormProps {
-  receipt: ReceiptDetailProps;
+  /** Receipt as returned by GET /households/{id}/receipts/{id}. */
+  receipt: ReceiptDetail;
   /**
    * Called when the user submits a valid correction.
    * Disabled (button is not interactive) until the PATCH endpoint exists.
@@ -69,7 +51,7 @@ function inputToRappen(value: string): number | null {
   return Math.round(n * 100);
 }
 
-function itemToDraft(item: ReceiptDetailProps['items'][number]): ReceiptItemDraft {
+function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
   return {
     position: item.position,
     name: item.name,
