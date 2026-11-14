@@ -18,6 +18,8 @@ class FakeDatabase:
     def __init__(self) -> None:
         self.households: dict[UUID, tuple[str, datetime]] = {}
         self.memberships: dict[tuple[UUID, str], Role] = {}
+        # receipt id -> (household id, uploaded_by)
+        self.receipts: dict[UUID, tuple[UUID, str]] = {}
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -36,3 +38,9 @@ class FakeDatabase:
             raise NotFoundError("Household not found")
         name, created_at = self.households[UUID(household_id)]
         return Household(id=household_id, name=name, created_at=created_at, my_role=my_role)
+
+    # bonbon.receipts.repo
+    def create_receipt(self, household_id: str, uploaded_by: str) -> str:
+        receipt_id = uuid4()
+        self.receipts[receipt_id] = (UUID(household_id), uploaded_by)
+        return str(receipt_id)
