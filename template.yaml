@@ -347,6 +347,26 @@ Resources:
       QueueName: !Sub bonbon-receipts-dlq-${Stage}
       MessageRetentionPeriod: 1209600 # 14 days, the maximum
 
+  # Second stage of the worker (ADR 0007): the Textract Lambda (outside the VPC) sends the S3
+  # key of the stored Textract result here, and the database Lambda (inside the VPC) reads it.
+  # No QueuePolicy: unlike ReceiptsQueue (which S3 sends to), this queue is written by a Lambda
+  # that runs as LabRole, so it needs no resource policy to allow a service principal.
+  ResultsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-results-${Stage}
+      # At least 6 x the database worker's timeout (AWS guidance for Lambda event sources).
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ResultsDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ResultsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-results-dlq-${Stage}
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum
+
   # A resource policy on the queue, not an IAM policy, so it is allowed in the Learner Lab.
   ReceiptsQueuePolicy:
     Type: AWS::SQS::QueuePolicy
