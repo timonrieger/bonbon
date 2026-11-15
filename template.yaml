@@ -400,6 +400,35 @@ Resources:
             BatchSize: 1
             FunctionResponseTypes: [ReportBatchItemFailures]
 
+  # Second stage of the worker (ADR 0007): reads a Textract result key from ResultsQueue, then
+  # (later) reads the JSON from S3, categorizes the items and writes the receipt to PostgreSQL.
+  # Runs in the VPC because it talks to the database; it holds one connection per container, so
+  # its ReservedConcurrentExecutions counts towards the 79-connection limit
+  # (Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + Migrate 1 = 51).
+  ProcessResultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.process_result.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      ReservedConcurrentExecutions: 10
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+      Events:
+        TextractResult:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ResultsQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
   # Applies src/bonbon/migrations/*.sql. Invoked by `mise run db:migrate`, not by API Gateway.
   # The only function with the master user.
   MigrateFunction:
