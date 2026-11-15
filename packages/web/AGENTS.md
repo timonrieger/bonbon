@@ -16,8 +16,9 @@ src/
 
 ## Rules
 
-- **Calling the API:** import functions from `@/api` (`getHousehold`, `createHousehold`, …). Never use `fetch` directly; the client adds the login token.
+- **Calling the API:** import functions from `@/api` (`getHousehold`, `createHousehold`, …). Never use `fetch` directly; the client adds the login token. The one exception is `uploadToS3` in `src/api/receipts.ts`: presigned S3 URLs reject the auth header.
 - **Server data always goes through TanStack Query:** `useQuery` for reads, `useMutation` for writes, as in `src/pages/`. No `useEffect` + `fetch`. For status polling (receipt processing) use `refetchInterval`.
+- **API types come from `@/api` too:** use the generated models and enums (`ReceiptDetail`, `ReceiptItem`, `ContentType`, `Status`, …), never hand-written copies or string literals. Form state that differs from the wire format derives from them (`Pick`, `Omit`, indexed access like `ReceiptUpload['upload_headers']`). Don't give components the same name as a generated type.
 - If an endpoint you need doesn't exist in `client.gen.ts`, it doesn't exist in the backend yet. Add it there first (see `packages/api/AGENTS.md`); don't fake it.
 - Login is handled by Amplify's `<Authenticator>`; use `useAuthenticator()` for the current user and sign-out.
 - Charts: Recharts. Styling: Tailwind classes, no separate CSS files.

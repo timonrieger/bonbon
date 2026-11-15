@@ -8,7 +8,8 @@ The reports (totals per month, category and store, receipt lists, household memb
 
 Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
-- RDS PostgreSQL 18 on `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not public: works. Only the `default` DB subnet group can be used (own subnet groups fail), so the database lives in the default VPC.
+- RDS PostgreSQL 18 on `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not public: works in the default VPC. The tests used the `default` DB subnet group.
+- Correction (2026-11-14): the original notes said own DB subnet groups fail; the error wasn't recorded. Retested: creating an own subnet group works. The `default` group only exists in accounts where an instance was once launched without a subnet group, and its name is reserved ("Subnet group name default is reserved"), so a fresh Learner Lab account can't deploy a template that references it.
 - A Lambda with `LabRole` runs in the default VPC and connects (TCP 20 ms; login plus first query 216 ms on a cold start, about 40 ms warm). `max_connections` is 79.
 - Blocked: Aurora Serverless v2 (with or without Data API), Aurora DSQL (`dsql:CreateCluster` missing for `voclabs` and `LabRole`), RDS IAM database authentication (`LabRole` has no `rds-db:connect`; login fails with "PAM authentication failed").
 - From inside the VPC without NAT, Textract, Secrets Manager and SNS are unreachable (calls hang until the connect timeout). S3 works through a free gateway endpoint.
@@ -18,7 +19,7 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
 ## Decision
 
-- Amazon RDS for PostgreSQL 18, `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not publicly accessible, `default` DB subnet group. One instance per stack (`bonbon-<stage>`).
+- Amazon RDS for PostgreSQL 18, `db.t4g.micro`, Single-AZ, 20 GB gp3, encrypted, not publicly accessible. One instance per stack (`bonbon-<stage>`) with its own DB subnet group over the same default-VPC subnets as the Lambdas (amended 2026-11-14, was `default`).
 - PostgreSQL rather than MySQL: `date_trunc` and `FILTER` for reports, native `uuid`, `CHECK` constraints and partial unique indexes, transactional schema migrations. Rather than Aurora: the smallest Aurora instance costs several times more and its extras are blocked or not needed.
 - Lambdas that use the database run in the VPC with their own security group; the database security group allows port 5432 only from it. VPC and subnet ids are stack parameters looked up by `.mise/tasks/stack-params.py`, never hard-coded.
 - TLS with certificate and hostname verification against the RDS CA bundle shipped in `bonbon/certs/global-bundle.pem`.
@@ -31,6 +32,7 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 
 - The instance costs money while idle: about 11.70 USD/month compute plus 2.30 USD storage, plus 0.80 USD for two secrets. Stopped, only storage and secrets remain (about 3.10 USD). Dev databases are stopped (`mise run db:stop`) or deleted (`mise run stack:down`) when not in use; AWS restarts a stopped instance after 7 days.
 - Every developer who runs `stack:up` gets their own database and its cost.
+- Switching from `default` to the own subnet group replaces the database. Because the instance has a fixed name, an existing dev stack has to be deleted (`mise run stack:down`) and deployed again (`mise run stack:up`) once.
 - Lambdas in the VPC have no internet access; anything that calls Textract, SNS or Secrets Manager stays outside (0007).
 - Deleting a stack takes up to about 20 minutes because AWS releases the Lambda network interfaces slowly; the security groups wait for that.
 - The database is a single instance that doesn't scale automatically. Multi-AZ, read replicas and RDS Proxy are the production upgrade path and are documented as a known limitation.
