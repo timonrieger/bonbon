@@ -893,6 +893,10 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "possible_duplicate": {
+            "type": "boolean",
+            "title": "Possible Duplicate"
+          },
           "image_url": {
             "type": "string",
             "title": "Image Url"
@@ -914,6 +918,7 @@
           "total_rappen",
           "uploaded_by_name",
           "created_at",
+          "possible_duplicate",
           "image_url",
           "items"
         ],
@@ -1046,6 +1051,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "possible_duplicate": {
+            "type": "boolean",
+            "title": "Possible Duplicate"
           }
         },
         "type": "object",
@@ -1056,7 +1065,8 @@
           "purchase_date",
           "total_rappen",
           "uploaded_by_name",
-          "created_at"
+          "created_at",
+          "possible_duplicate"
         ],
         "title": "ReceiptSummary"
       },

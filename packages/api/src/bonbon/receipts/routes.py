@@ -1,13 +1,11 @@
 """Receipt endpoints: upload (docs/features/01-upload-processing.md) and the receipt list and
 detail view (docs/features/03-dashboard.md).
 
-List and detail only fix the contract so far and answer 501; their SQL comes in a later PR.
 """
 
 from typing import Annotated
 
 from aws_lambda_powertools.event_handler.api_gateway import Router
-from aws_lambda_powertools.event_handler.exceptions import ServiceError
 from aws_lambda_powertools.event_handler.openapi.params import Query
 
 from bonbon.auth import MEMBERSHIP_RESPONSES, current_user_id, require_membership
@@ -23,6 +21,8 @@ from bonbon.receipts.models import (
 router = Router()
 
 UPLOAD_URL_EXPIRES_IN = 300
+# Long enough to look at the photo; the detail view fetches a fresh URL when it is opened again.
+IMAGE_URL_EXPIRES_IN = 300
 
 
 @router.post(
@@ -69,9 +69,10 @@ def list_receipts(
 
     Newest first by purchase date; a receipt without one is sorted by its upload date, the same
     date the month filter and the reports use. Receipts on the same day: latest upload first.
+    Uploads whose file never arrived are left out.
     """
     require_membership(household_id, current_user_id(router))
-    raise ServiceError(501, "Not implemented yet")
+    return ReceiptList(receipts=repo.list_for_household(household_id, month))
 
 
 @router.get(
@@ -81,5 +82,10 @@ def list_receipts(
     responses=MEMBERSHIP_RESPONSES,
 )
 def get_receipt(household_id: str, receipt_id: str) -> ReceiptDetail:
+    """The receipt with its items and a presigned `image_url` for the original file."""
     require_membership(household_id, current_user_id(router))
-    raise ServiceError(501, "Not implemented yet")
+    summary, items = repo.get(household_id, receipt_id)
+    image_url = storage.presigned_download(
+        storage.receipt_key(household_id, summary.id), expires_in=IMAGE_URL_EXPIRES_IN
+    )
+    return ReceiptDetail(**summary.model_dump(), image_url=image_url, items=items)

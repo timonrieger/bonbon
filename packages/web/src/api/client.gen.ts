@@ -44,6 +44,7 @@ export type ReceiptSummary = {
     total_rappen: number | null;
     uploaded_by_name: string | null;
     created_at: string;
+    possible_duplicate: boolean;
 };
 export type ReceiptList = {
     receipts: ReceiptSummary[];
@@ -76,6 +77,7 @@ export type ReceiptDetail = {
     total_rappen: number | null;
     uploaded_by_name: string | null;
     created_at: string;
+    possible_duplicate: boolean;
     image_url: string;
     items: ReceiptItem[];
 };

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -8,6 +8,13 @@ ReceiptStatus = Literal["uploaded", "processing", "done", "failed", "duplicate"]
 # A calendar month as YYYY-MM, used by the receipt list and the reports.
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
 Month = Annotated[str, Field(pattern=MONTH_PATTERN, examples=["2026-11"])]
+
+
+def month_bounds(month: str) -> tuple[date, date]:
+    """First day of the month and of the next month, for `day >= start AND day < end`."""
+    start = date.fromisoformat(f"{month}-01")
+    end = (start + timedelta(days=31)).replace(day=1)
+    return start, end
 
 
 # The frontend shrinks photos to ~300-500 KB; PDFs are passed through as they are.
@@ -41,6 +48,9 @@ class ReceiptSummary(BaseModel):
     # None once the uploader has deleted their account.
     uploaded_by_name: str | None
     created_at: datetime
+    # Another done receipt in the household has the same store, date and total. Both still
+    # count; the UI points it out and the member decides (docs/features/03-dashboard.md#rules).
+    possible_duplicate: bool
 
 
 class ReceiptList(BaseModel):
