@@ -54,3 +54,10 @@ def presigned_upload(
     )
     # Content-Length is set by the browser itself from the file and can't be sent by hand.
     return url, {"Content-Type": content_type, "x-amz-tagging": PENDING_TAG}
+
+
+def presigned_download(key: str, expires_in: int) -> str:
+    """URL for the browser to GET the original file, signed locally like the upload."""
+    return _s3().generate_presigned_url(
+        "get_object", Params={"Bucket": bucket_name(), "Key": key}, ExpiresIn=expires_in
+    )

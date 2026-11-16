@@ -6,12 +6,40 @@ the SQL itself; that runs against the dev stack (open question in docs/decisions
 Keep the behavior in line with the real functions in bonbon/*/repo.py and bonbon/auth.py.
 """
 
-from datetime import UTC, datetime
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError
 from bonbon.auth import Role
 from bonbon.households.models import Household, Member
+from bonbon.receipts.models import ReceiptItem, ReceiptStatus, ReceiptSummary, month_bounds
+from bonbon.reports.models import (
+    CategoryTotal,
+    MonthlyReport,
+    MonthTotal,
+    SpendingTrend,
+    StoreTotal,
+)
+
+
+@dataclass
+class FakeReceipt:
+    household_id: UUID
+    uploaded_by: str | None
+    status: ReceiptStatus = "uploaded"
+    store: str | None = None
+    purchase_date: date | None = None
+    total_rappen: int | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    items: list[ReceiptItem] = field(default_factory=list)
+
+    @property
+    def day(self) -> date:
+        """Like RECEIPT_DAY in bonbon/receipts/repo.py (without the time zone)."""
+        return self.purchase_date or self.created_at.date()
 
 
 class FakeDatabase:
@@ -21,8 +49,7 @@ class FakeDatabase:
         self.joined_at: dict[tuple[UUID, str], datetime] = {}
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
-        # receipt id -> (household id, uploaded_by)
-        self.receipts: dict[UUID, tuple[UUID, str]] = {}
+        self.receipts: dict[UUID, FakeReceipt] = {}
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -81,6 +108,108 @@ class FakeDatabase:
 
     # bonbon.receipts.repo
     def create_receipt(self, household_id: str, uploaded_by: str) -> str:
+        return str(self.add_receipt(UUID(household_id), uploaded_by))
+
+    def list_receipts(self, household_id: str, month: str | None) -> list[ReceiptSummary]:
+        abandoned_before = datetime.now(UTC) - timedelta(minutes=15)
+        start, end = month_bounds(month) if month else (date.min, date.max)
+        found = [
+            (receipt_id, r)
+            for receipt_id, r in self.receipts.items()
+            if r.household_id == UUID(household_id)
+            and not (r.status == "uploaded" and r.created_at < abandoned_before)
+            and start <= r.day < end
+        ]
+        found.sort(key=lambda found: (found[1].day, found[1].created_at), reverse=True)
+        return [self._summary(receipt_id, r) for receipt_id, r in found]
+
+    def get_receipt(
+        self, household_id: str, receipt_id: str
+    ) -> tuple[ReceiptSummary, list[ReceiptItem]]:
+        try:
+            r = self.receipts.get(UUID(receipt_id))
+        except ValueError:
+            r = None
+        if r is None or r.household_id != UUID(household_id):
+            raise NotFoundError("Receipt not found")
+        return self._summary(UUID(receipt_id), r), r.items
+
+    def _summary(self, receipt_id: UUID, r: FakeReceipt) -> ReceiptSummary:
+        same = (r.store, r.purchase_date, r.total_rappen)
+        duplicate = r.status == "done" and any(
+            other_id != receipt_id
+            and o.household_id == r.household_id
+            and o.status == "done"
+            and None not in same
+            and (o.store, o.purchase_date, o.total_rappen) == same
+            for other_id, o in self.receipts.items()
+        )
+        return ReceiptSummary(
+            id=str(receipt_id),
+            status=r.status,
+            store=r.store,
+            purchase_date=r.purchase_date,
+            total_rappen=r.total_rappen,
+            uploaded_by_name=self.users[r.uploaded_by][0] if r.uploaded_by else None,
+            created_at=r.created_at,
+            possible_duplicate=duplicate,
+        )
+
+    # Test setup: receipts as the worker will leave them.
+    def add_receipt(self, household_id: UUID, uploaded_by: str | None, **fields: Any) -> UUID:
         receipt_id = uuid4()
-        self.receipts[receipt_id] = (UUID(household_id), uploaded_by)
-        return str(receipt_id)
+        self.receipts[receipt_id] = FakeReceipt(household_id, uploaded_by, **fields)
+        return receipt_id
+
+    # bonbon.reports.repo
+    def _done(self, household_id: str, start: date, end: date) -> list[FakeReceipt]:
+        return [
+            r
+            for r in self.receipts.values()
+            if r.household_id == UUID(household_id) and r.status == "done" and start <= r.day < end
+        ]
+
+    def monthly_report(self, household_id: str, month: str) -> MonthlyReport:
+        start, end = month_bounds(month)
+        previous = (start - timedelta(days=1)).replace(day=1)
+        receipts = self._done(household_id, start, end)
+        by_category: dict[str, int] = defaultdict(int)
+        by_store: dict[str | None, int] = defaultdict(int)
+        for r in receipts:
+            by_store[r.store] += r.total_rappen or 0
+            for item in r.items:
+                by_category[item.category] += item.amount_rappen
+        return MonthlyReport(
+            month=month,
+            total_rappen=sum(r.total_rappen or 0 for r in receipts),
+            receipt_count=len(receipts),
+            previous_month_total_rappen=sum(
+                r.total_rappen or 0 for r in self._done(household_id, previous, start)
+            ),
+            by_category=[
+                CategoryTotal(category=c, total_rappen=t)
+                for c, t in sorted(by_category.items(), key=lambda ct: (-ct[1], ct[0]))
+            ],
+            by_store=[
+                StoreTotal(store=s, total_rappen=t)
+                for s, t in sorted(by_store.items(), key=lambda st: (-st[1], st[0] is None, st[0]))
+            ],
+        )
+
+    def spending_trend(self, household_id: str, months: int) -> SpendingTrend:
+        start = date.today().replace(day=1)
+        firsts = [start]
+        for _ in range(months - 1):
+            firsts.insert(0, (firsts[0] - timedelta(days=1)).replace(day=1))
+        return SpendingTrend(
+            months=[
+                MonthTotal(
+                    month=first.strftime("%Y-%m"),
+                    total_rappen=sum(
+                        r.total_rappen or 0
+                        for r in self._done(household_id, *month_bounds(first.strftime("%Y-%m")))
+                    ),
+                )
+                for first in firsts
+            ]
+        )

@@ -29,6 +29,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     from bonbon import auth, db
     from bonbon.households import repo as households
     from bonbon.receipts import repo as receipts
+    from bonbon.reports import repo as reports
     from bonbon.users import repo as users
 
     def no_real_database(*args: Any, **kwargs: Any) -> None:
@@ -42,6 +43,10 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(households, "list_for_user", fake.list_households)
     monkeypatch.setattr(households, "list_members", fake.list_members)
     monkeypatch.setattr(receipts, "create", fake.create_receipt)
+    monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)
+    monkeypatch.setattr(receipts, "get", fake.get_receipt)
+    monkeypatch.setattr(reports, "monthly", fake.monthly_report)
+    monkeypatch.setattr(reports, "trend", fake.spending_trend)
     monkeypatch.setattr(users, "sync", fake.sync_user)
     # Every test starts with an empty per-container cache, like a cold start.
     monkeypatch.setattr(auth, "_synced", {})

@@ -39,8 +39,8 @@ flowchart LR
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
 | Worker split: Textract Lambda outside the VPC, results queue, DB Lambda inside ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned (stage 2) | @timonrieger, @Dam-Mil |
 | Worker logic: Textract, categorization, status | planned | @Dam-Mil |
-| Receipt list and detail API (`ReceiptsFunction`) | contract only, routes answer 501 | @nosernoel |
-| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | contract only, routes answer 501 | @nosernoel |
+| Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
+| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
 | S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
@@ -69,9 +69,9 @@ PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrat
 | `households` | `id` uuid | name, created_at | implemented |
 | `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household; a user with memberships can't be deleted | implemented |
 | `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
-| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | schema only |
-| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | schema only |
-| `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | schema only |
+| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | read by the API; written by the worker later |
+| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | read by the API; written by the worker later |
+| `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | `categories` read by the API; rules schema only |
 | `join_attempts` | `id` | rate limit for joining | schema only |
 | `schema_migrations` | `version` | applied migration files | implemented |
 

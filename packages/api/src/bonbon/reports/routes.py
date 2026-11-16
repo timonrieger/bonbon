@@ -1,17 +1,13 @@
-"""Spending reports for the dashboard (docs/features/03-dashboard.md).
-
-The contract is fixed so the frontend can generate its types; the SQL comes in a later PR.
-Until then the routes check membership and answer 501.
-"""
+"""Spending reports for the dashboard (docs/features/03-dashboard.md)."""
 
 from typing import Annotated
 
 from aws_lambda_powertools.event_handler.api_gateway import Router
-from aws_lambda_powertools.event_handler.exceptions import ServiceError
 from aws_lambda_powertools.event_handler.openapi.params import Query
 
 from bonbon.auth import MEMBERSHIP_RESPONSES, current_user_id, require_membership
 from bonbon.receipts.models import MONTH_PATTERN
+from bonbon.reports import repo
 from bonbon.reports.models import MonthlyReport, SpendingTrend
 
 router = Router()
@@ -29,7 +25,7 @@ def get_monthly_report(
 ) -> MonthlyReport:
     """Spending in one month (YYYY-MM): total, per category, per store and the previous month."""
     require_membership(household_id, current_user_id(router))
-    raise ServiceError(501, "Not implemented yet")
+    return repo.monthly(household_id, month)
 
 
 @router.get(
@@ -44,4 +40,4 @@ def get_spending_trend(
 ) -> SpendingTrend:
     """Total spending per month over the last `months` months, including the current one."""
     require_membership(household_id, current_user_id(router))
-    raise ServiceError(501, "Not implemented yet")
+    return repo.trend(household_id, months)
