@@ -168,7 +168,7 @@ Resources:
   # Every route in the Python router needs a matching event here.
   # Functions that use the database run in the VPC and hold one connection per container.
   # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
-  # today Households 20 + Receipts 10 + Reports 10 + Migrate 1 = 41.
+  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + Migrate 1 = 51.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -364,6 +364,26 @@ Resources:
       QueueName: !Sub bonbon-receipts-dlq-${Stage}
       MessageRetentionPeriod: 1209600 # 14 days, the maximum
 
+  # Second stage of the worker (ADR 0007): the Textract Lambda (outside the VPC) sends the S3
+  # key of the stored Textract result here, and the database Lambda (inside the VPC) reads it.
+  # No QueuePolicy: unlike ReceiptsQueue (which S3 sends to), this queue is written by a Lambda
+  # that runs as LabRole, so it needs no resource policy to allow a service principal.
+  ResultsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-results-${Stage}
+      # At least 6 x the database worker's timeout (AWS guidance for Lambda event sources).
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ResultsDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ResultsDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-results-dlq-${Stage}
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum
+
   # A resource policy on the queue, not an IAM policy, so it is allowed in the Learner Lab.
   ReceiptsQueuePolicy:
     Type: AWS::SQS::QueuePolicy
@@ -394,6 +414,34 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt ReceiptsQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # Second stage of the worker (ADR 0007): reads a Textract result key from ResultsQueue, then
+  # (later) reads the JSON from S3, categorizes the items and writes the receipt to PostgreSQL.
+  # Runs in the VPC because it talks to the database; it holds one connection per container, so
+  # its ReservedConcurrentExecutions counts towards the 79-connection limit (sum above HouseholdsFunction).
+  ProcessResultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.process_result.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      ReservedConcurrentExecutions: 10
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+      Events:
+        TextractResult:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ResultsQueue.Arn
             BatchSize: 1
             FunctionResponseTypes: [ReportBatchItemFailures]
 
