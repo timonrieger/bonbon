@@ -12,7 +12,7 @@ flowchart LR
   s3 -->|ObjectCreated| sqs[SQS + DLQ]
   subgraph vpc[Default VPC, no internet access]
     fns[API Lambdas<br/>one per domain]
-    dbworker[Worker DB Lambda<br/>stage 2]
+    dbworker[Worker DB Lambda<br/>reserved concurrency 10]
     migrate[Migrate Lambda]
     rds[(RDS PostgreSQL<br/>db.t4g.micro)]
     fns --> rds
@@ -23,7 +23,7 @@ flowchart LR
   sqs --> worker[Worker Textract Lambda<br/>reserved concurrency 10]
   worker --> textract[Textract AnalyzeExpense]
   worker -->|raw JSON| s3
-  worker --> results[Results SQS + DLQ<br/>stage 2]
+  worker --> results[Results SQS + DLQ]
   results --> dbworker
   dbworker -.->|S3 gateway endpoint| s3
   worker --> sns[SNS e-mail]
@@ -37,7 +37,8 @@ flowchart LR
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
-| Worker split: Textract Lambda outside the VPC, results queue, DB Lambda inside ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned (stage 2) | @timonrieger, @Dam-Mil |
+| Worker split: results queue + DLQ, DB Lambda inside the VPC ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda only logs) | @timonrieger, @Dam-Mil |
+| Worker split: Textract Lambda sends to the results queue, S3 gateway endpoint ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned | @timonrieger, @Dam-Mil |
 | Worker logic: Textract, categorization, status | planned | @Dam-Mil |
 | Receipt list and detail API (`ReceiptsFunction`) | contract only, routes answer 501 | @nosernoel |
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | contract only, routes answer 501 | @nosernoel |
@@ -57,7 +58,7 @@ Update the status column when something lands.
 5. SNS notifies the user (from outside the VPC). The frontend polls the status.
 6. After 3 failed attempts a message goes to the dead-letter queue of its queue.
 
-Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials.md)); today the worker only logs.
+Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials.md)). The queues and both Lambdas exist, but today both only log: nothing sends to the results queue yet.
 
 ## Data model
 
