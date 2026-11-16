@@ -6,14 +6,15 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 ## Done when
 
-- [ ] Upload a photo (JPG/PNG) or a single-page PDF (optional)
+- [x] Upload a photo (JPG/PNG) from the household page
+- [ ] Upload a single-page PDF (optional; the API accepts `application/pdf`, the UI doesn't yet)
 - [ ] Frontend shrinks images to ~300–500 KB before upload
 - [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
 - [ ] PDFs with more than one page are rejected
-- [ ] Processing runs S3 → SQS → worker Lambda
+- [ ] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); both queues and Lambdas exist, the Lambdas only log so far
 - [ ] Status visible in the app: processing / done / failed / duplicate
 - [ ] Notification on completion, in-app (required) or e-mail via SNS (optional)
-- [ ] Failed receipts land in the dead-letter queue after 3 attempts
+- [x] Failed receipts land in the dead-letter queue after 3 attempts (both queues, partial batch failures)
 - [ ] Worker is idempotent (conditional status write; a duplicate delivery is dropped)
 - [ ] Same file uploaded twice in a household is detected via file hash → `duplicate`
 - [x] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
@@ -22,7 +23,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-**Implemented** (`feat/frontend-rabit`):
+**Implemented** (#16):
 
 - `src/components/ReceiptFilePicker.tsx`: file picker with client-side validation
   - Accepts JPG/PNG only (MIME-type check), rejects all other formats
@@ -40,7 +41,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - Status polling with `refetchInterval` on `getReceipt`
 
 **Still planned:**
-- Status badge: `processing / done / failed / duplicate` (needs `GET /receipts/{id}` with SQL)
+- Status badge: `processing / done / failed / duplicate` (`listReceipts` and `getReceipt` return `status`)
 - Client-side image compression to ~300–500 KB (planned: `browser-image-compression`)
 - PDF support (single-page only; rejected with a clear error message)
 
@@ -48,11 +49,15 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 **Implemented**:
 - S3 bucket with lifecycle rules, CORS, and object-created → SQS notification (`template.yaml`)
-- SQS queue + dead-letter queue; worker skeleton (`handlers/process_receipt.py`)
+- Receipts queue + DLQ → `handlers/process_receipt.py` (skeleton: parses the S3 key and logs)
+- Results queue + DLQ → `handlers/process_result.py` in the VPC (skeleton: logs the message) (#17)
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
+- `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
 
 **Planned**:
-- Worker: Textract call, status writes, duplicate detection via file hash
+- Textract Lambda: Textract call, raw JSON to `textract-results/`, S3 key to the results queue, remove the `status=pending` tag
+- Database Lambda: idempotent status write, duplicate detection via file hash, items to PostgreSQL
+- Textract mock mode for the load test
 
 ## Notes
 

@@ -6,7 +6,7 @@
 
 - [ ] The app shows per household what will happen, and requires re-authentication
 - [ ] The API disables the Cognito account immediately and queues a deletion job (own SQS queue)
-- [ ] The worker deletes all households where the user is the only member, including receipts, monthly totals and S3 images
+- [ ] The worker deletes all households where the user is the only member, including receipts and S3 images
 - [ ] In shared households the user is removed like on leaving: receipts stay, the link to the user is removed, the owner role goes to the longest-standing member
 - [ ] Finally the Cognito account is deleted
 - [ ] All steps can be repeated safely; failures go to a DLQ and trigger a CloudWatch alarm
@@ -16,7 +16,7 @@
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-**Implemented** (`feat/frontend-rabit`):
+**Implemented** (#16):
 
 - `src/components/DeleteAccountDialog.tsx`: single-step confirmation dialog
   - Explains all three consequences (sole-member households deleted, shared
@@ -72,6 +72,7 @@ frontend bypasses the entire cleanup pipeline.
 **Planned** (all items open):
 - `DELETE /users/me`: disable Cognito account immediately, insert job into deletion SQS queue
 - Deletion worker: remove sole-member households (receipts + S3 images), remove user
-  from shared households (transfer owner role), then delete Cognito account
+  from shared households (transfer owner role), delete the `users` row (receipts keep
+  `uploaded_by = NULL`, migration 0003), then delete Cognito account
 - Dedicated SQS queue + DLQ for deletion jobs
 - CloudWatch alarm on DLQ depth

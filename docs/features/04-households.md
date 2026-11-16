@@ -11,7 +11,7 @@
 - [ ] Invite via random code, valid 48 h, single use; only a hash is stored; expired via `expires_at` (optional: join without code)
 - [ ] Joining is one transaction: create member and invalidate the code
 - [ ] Failed join attempts are limited per user; API Gateway throttles
-- [ ] Every receipt belongs to exactly one household; all reports use that household's data
+- [x] Every receipt belongs to exactly one household; all reports use that household's data
 - [ ] Members can leave, the owner can remove members; access ends immediately
 - [ ] Owner hands over the role before leaving; when the last member leaves, the household, its receipts and images are deleted
 
