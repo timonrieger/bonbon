@@ -4,12 +4,18 @@
 
 ## Done when
 
-- [ ] Spending per month, per category and per store
-- [ ] Comparison with the previous month (optional, first to drop)
-- [ ] List of all receipts with a detail view (including the original image via presigned URL)
-- [ ] Monthly totals are computed in SQL at query time (`GROUP BY` month, category, store), so corrections, deletions and date changes are reflected immediately ([decisions/0006](../decisions/0006-postgresql-on-rds.md))
-- [ ] Duplicates are excluded from all totals
+- [x] Spending per month, per category and per store (API #18, charts #10)
+- [ ] Comparison with the previous month (optional, first to drop; the API returns `previous_month_total_rappen`, the UI doesn't show it yet)
+- [ ] List of all receipts with a detail view (including the original image via presigned URL); API done, UI open
+- [x] Monthly totals are computed in SQL at query time (`GROUP BY` month, category, store), so corrections, deletions and date changes are reflected immediately ([decisions/0006](../decisions/0006-postgresql-on-rds.md))
+- [x] Duplicates are excluded from all totals
 - [ ] Totals are current within a few seconds of a change
+
+## Implementation status
+
+- **API** (#18): all four routes below run on PostgreSQL.
+- **UI** (`DashboardPage.tsx`, #8, #10): month navigation, six-month trend chart, charts per category and per store for the selected month.
+- **Open in the UI:** total and receipt count for the month (the cards still say „Auswertungen sind noch nicht verfügbar"), previous-month comparison, receipt list and detail view.
 
 ## API
 

@@ -15,7 +15,7 @@
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-**Implemented** (`feat/frontend-rabit`):
+**Implemented** (#16):
 
 - `src/components/ReceiptCorrectionForm.tsx`: correction form for auto-extracted receipt data
   - Displays and edits: `store` (text), `purchase_date` (date picker), item rows
@@ -35,8 +35,8 @@
 
 **Blocked on backend — needed for full integration:**
 
-1. `GET /households/{id}/receipts/{id}` must return real data (SQL) instead of 501.
-   The form takes the generated `ReceiptDetail` type from `@/api`.
+1. ~~`GET /households/{id}/receipts/{id}` must return real data~~: done (#18). It returns
+   the generated `ReceiptDetail` type the form takes; items stay empty until the worker writes them.
 2. A `PATCH /households/{id}/receipts/{id}` endpoint is needed to save corrections.
    The request body type is not yet designed. Suggested shape (coordinate with @Dam-Mil):
    ```json
@@ -59,6 +59,7 @@
 2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
    data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
 3. Remove the `disabled` from the save button
+
 ## Rules
 
 - Every member of the household can correct any receipt, not only the uploader.

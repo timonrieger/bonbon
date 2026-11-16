@@ -50,3 +50,4 @@ Everything runs through mise. Never call `pip`, `npm`, `sam deploy` etc. directl
 - New endpoint: route + test + matching event in `template.yaml` + regenerated client.
 - Works on the developer's own dev stack, not just in tests.
 - If behavior or architecture changed, the matching file in `docs/` is updated in the same PR.
+- If a feature changed, its file in `docs/features/` is updated in the same PR: checkboxes ticked, implementation status current.

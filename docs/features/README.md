@@ -1,6 +1,6 @@
 # Features (MVP)
 
-One file per MVP feature from the [proposal](../project/kassenzettel.md), chapter 3. Each lists acceptance criteria (the "done when"), owners, and status. Create GitHub issues from these; keep the checkboxes here up to date.
+One file per MVP feature from the [proposal](../project/kassenzettel.md), chapter 3. Each lists acceptance criteria (the "done when"), owners, and status. Create GitHub issues from these. Every PR that changes a feature updates its file here: tick the checkboxes and update the implementation status.
 
 | # | Feature | Owners | Milestone |
 |---|---|---|---|
