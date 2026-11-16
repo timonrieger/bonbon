@@ -836,7 +836,6 @@
             "type": "string",
             "enum": [
               "uploaded",
-              "processing",
               "done",
               "failed",
               "duplicate"
@@ -995,7 +994,6 @@
             "type": "string",
             "enum": [
               "uploaded",
-              "processing",
               "done",
               "failed",
               "duplicate"

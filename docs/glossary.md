@@ -12,6 +12,6 @@ Code and docs use the English term. UI text uses the German one.
 | Mitglied | member | A user in a household; role `owner` or `member` |
 | Einladungscode | invite code | One-time code to join a household, valid 48 h |
 | Monatswerte | monthly totals | Pre-computed sums per month, category and store |
-| Status: hochgeladen / in Bearbeitung / fertig / fehlgeschlagen / Duplikat | `uploaded` / `processing` / `done` / `failed` / `duplicate` | Receipt processing status |
+| Status: in Bearbeitung / fertig / fehlgeschlagen / Duplikat | `uploaded` / `done` / `failed` / `duplicate` | Receipt processing status; `uploaded` lasts until the worker is done |
 | Kontolöschung | account deletion | Deleting a user and their data |
 | Texterkennung | extraction | Textract AnalyzeExpense (or AI API fallback) |

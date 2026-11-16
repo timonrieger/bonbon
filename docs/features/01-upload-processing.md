@@ -12,10 +12,11 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
 - [ ] PDFs with more than one page are rejected
 - [ ] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); both queues and Lambdas exist, the Lambdas only log so far
-- [ ] Status visible in the app: processing / done / failed / duplicate
+- [ ] Status visible in the app: in Bearbeitung (`uploaded`) / fertig / fehlgeschlagen / Duplikat
 - [ ] Notification on completion, in-app (required) or e-mail via SNS (optional)
 - [x] Failed receipts land in the dead-letter queue after 3 attempts (both queues, partial batch failures)
-- [ ] Worker is idempotent (conditional status write; a duplicate delivery is dropped)
+- [ ] Worker is idempotent (one transaction from `uploaded` to the final status; a duplicate delivery changes nothing)
+- [ ] A receipt that fails for good is set to `failed`, not only dead-lettered
 - [ ] Same file uploaded twice in a household is detected via file hash → `duplicate`
 - [x] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
 
@@ -41,7 +42,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - Status polling with `refetchInterval` on `getReceipt`
 
 **Still planned:**
-- Status badge: `processing / done / failed / duplicate` (`listReceipts` and `getReceipt` return `status`)
+- Status badge: `uploaded` (shown as «in Bearbeitung») / `done` / `failed` / `duplicate` (`listReceipts` and `getReceipt` return `status`)
 - Client-side image compression to ~300–500 KB (planned: `browser-image-compression`)
 - PDF support (single-page only; rejected with a clear error message)
 
@@ -64,5 +65,5 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - The receipt id is created when the presigned URL is issued and is part of the S3 key. `POST /households/{household_id}/receipts` returns `receipt_id`, `upload_url`, `upload_headers` and `expires_in` (300 s). The browser sends a `PUT` to `upload_url` with every header from `upload_headers` and the file as body. Type, size and tag are signed into the URL, so S3 rejects anything else.
 - Every upload is tagged `status=pending` via `upload_headers`. The worker must remove the tag once the receipt is processed, otherwise the lifecycle rule deletes the file after 7 days.
 - S3 lifecycle: Glacier Instant Retrieval after 30 days, delete never-processed uploads (tag `status=pending`) after 7 days, delete raw Textract results (`textract-results/`) after 30 days, abort incomplete multipart uploads after 1 day.
-- The worker sets `duplicate` only for the same file hash in the household. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
+- The worker sets `duplicate` only for the same file hash in the household. A failed receipt doesn't count: uploading the same file again processes it normally. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
 - A Textract mock mode (realistic delay and rate limit) is needed for the load test.

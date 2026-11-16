@@ -10,9 +10,11 @@ from bonbon.receipts.models import ReceiptItem, ReceiptSummary, month_bounds
 # all use this, so a receipt always shows up in the month it is counted in.
 RECEIPT_DAY = "COALESCE(r.purchase_date, (r.created_at AT TIME ZONE 'Europe/Zurich')::date)"
 
-# The upload URL is valid for 5 minutes. A receipt still 'uploaded' long after that never got
-# its file; the list leaves it out (the row itself stays).
-ABANDONED = "r.status = 'uploaded' AND r.created_at < now() - interval '15 minutes'"
+# The upload URL is valid for 5 minutes, and the worker ends every receipt whose file arrived in
+# 'done', 'failed' or 'duplicate' within 18 minutes (2 queues x 3 attempts x 180 s visibility
+# timeout). A receipt still 'uploaded' after 30 minutes never got its file; the list leaves it
+# out (the row itself stays).
+ABANDONED = "r.status = 'uploaded' AND r.created_at < now() - interval '30 minutes'"
 
 # The last column is possible_duplicate: same store, date and total as another done receipt of
 # the household (see ReceiptSummary). Receipts missing one of the three are never flagged.

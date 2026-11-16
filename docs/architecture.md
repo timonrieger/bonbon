@@ -54,7 +54,7 @@ Update the status column when something lands.
 1. Frontend asks the API for a presigned URL (`createReceipt`). The API inserts the receipt row (status `uploaded`) and puts its id in the S3 key: `households/<householdId>/receipts/<receiptId>` (built by `bonbon/receipts/storage.py`). The URL is signed locally, so the VPC Lambda needs no route to S3. Content type, size (max. 5 MB) and the tag `status=pending` are part of the signature.
 2. Frontend uploads directly to S3 with a `PUT` and the returned `upload_headers`. The request ends there.
 3. S3 event (keys under `households/`) → SQS → Textract Lambda, one message at a time, max 10 in parallel. It runs outside the VPC, calls Textract, stores the raw result in S3 under `textract-results/<householdId>/<receiptId>.json` (outside `households/`, so it doesn't trigger itself; deleted after 30 days) and sends the key to the results queue.
-4. Results queue → DB Lambda inside the VPC. It switches status `uploaded → processing` with `UPDATE … WHERE status = 'uploaded'`, so a duplicate delivery is dropped, then categorizes items by keyword rules, writes receipt and items, sets `done`. The worker removes the `status=pending` tag from the file, so the lifecycle rule keeps it.
+4. Results queue → DB Lambda inside the VPC. In one transaction guarded by `WHERE status = 'uploaded'` it categorizes items by keyword rules, writes receipt and items and sets `done`, `failed` or `duplicate`, so a duplicate delivery changes nothing and a crash leaves no half-written receipt. When Textract fails for good, the Textract Lambda sends the error instead of a key and the receipt becomes `failed`. The worker removes the `status=pending` tag from the file, so the lifecycle rule keeps it.
 5. SNS notifies the user (from outside the VPC). The frontend polls the status.
 6. After 3 failed attempts a message goes to the dead-letter queue of its queue.
 
@@ -70,7 +70,7 @@ PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrat
 | `households` | `id` uuid | name, created_at | implemented |
 | `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household; a user with memberships can't be deleted | implemented |
 | `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
-| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | read by the API; written by the worker later |
+| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates and failed receipts; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | read by the API; written by the worker later |
 | `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | read by the API; written by the worker later |
 | `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | `categories` read by the API; rules schema only |
 | `join_attempts` | `id` | rate limit for joining | schema only |
