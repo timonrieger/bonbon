@@ -52,7 +52,7 @@ Update the status column when something lands.
 
 1. Frontend asks the API for a presigned URL (`createReceipt`). The API inserts the receipt row (status `uploaded`) and puts its id in the S3 key: `households/<householdId>/receipts/<receiptId>` (built by `bonbon/receipts/storage.py`). The URL is signed locally, so the VPC Lambda needs no route to S3. Content type, size (max. 5 MB) and the tag `status=pending` are part of the signature.
 2. Frontend uploads directly to S3 with a `PUT` and the returned `upload_headers`. The request ends there.
-3. S3 event (keys under `households/`) → SQS → Textract Lambda, one message at a time, max 10 in parallel. It runs outside the VPC, calls Textract, stores the raw result in S3 outside `households/` (so it doesn't trigger itself) and sends the key to the results queue.
+3. S3 event (keys under `households/`) → SQS → Textract Lambda, one message at a time, max 10 in parallel. It runs outside the VPC, calls Textract, stores the raw result in S3 under `textract-results/<householdId>/<receiptId>.json` (outside `households/`, so it doesn't trigger itself; deleted after 30 days) and sends the key to the results queue.
 4. Results queue → DB Lambda inside the VPC. It switches status `uploaded → processing` with `UPDATE … WHERE status = 'uploaded'`, so a duplicate delivery is dropped, then categorizes items by keyword rules, writes receipt and items, sets `done`. The worker removes the `status=pending` tag from the file, so the lifecycle rule keeps it.
 5. SNS notifies the user (from outside the VPC). The frontend polls the status.
 6. After 3 failed attempts a message goes to the dead-letter queue of its queue.
