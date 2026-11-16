@@ -315,6 +315,11 @@ Resources:
             TagFilters:
               - { Key: status, Value: pending }
             ExpirationInDays: 7
+          # Raw Textract results are read once by the DB worker; expiration wins over the Glacier IR rule
+          - Id: delete-textract-results-after-30-days
+            Status: Enabled
+            Prefix: textract-results/
+            ExpirationInDays: 30
           - Id: abort-incomplete-multipart-uploads
             Status: Enabled
             AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
