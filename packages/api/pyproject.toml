@@ -13,7 +13,7 @@ dependencies = [
 dev = [
   # boto3 ships with the Lambda runtime, so it is only a dev dependency.
   "boto3>=1.43.114",
-  "moto[dynamodb]>=5.2.4",
+  "moto>=5.2.4",
   "pytest>=9.1.1",
 ]
 

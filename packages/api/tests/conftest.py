@@ -12,6 +12,7 @@ os.environ.update(
     AWS_ACCESS_KEY_ID="testing",
     AWS_SECRET_ACCESS_KEY="testing",
     POWERTOOLS_SERVICE_NAME="bonbon-test",
+    RECEIPTS_BUCKET="bonbon-receipts-test",
 )
 
 
@@ -27,6 +28,9 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     """Replace every SQL function with an in-memory fake (see tests/fakes.py)."""
     from bonbon import auth, db
     from bonbon.households import repo as households
+    from bonbon.receipts import repo as receipts
+    from bonbon.reports import repo as reports
+    from bonbon.users import repo as users
 
     def no_real_database(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("A test reached the real database; add a fake in tests/fakes.py")
@@ -36,6 +40,16 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(auth, "role_in_household", fake.role_in_household)
     monkeypatch.setattr(households, "create", fake.create_household)
     monkeypatch.setattr(households, "get", fake.get_household)
+    monkeypatch.setattr(households, "list_for_user", fake.list_households)
+    monkeypatch.setattr(households, "list_members", fake.list_members)
+    monkeypatch.setattr(receipts, "create", fake.create_receipt)
+    monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)
+    monkeypatch.setattr(receipts, "get", fake.get_receipt)
+    monkeypatch.setattr(reports, "monthly", fake.monthly_report)
+    monkeypatch.setattr(reports, "trend", fake.spending_trend)
+    monkeypatch.setattr(users, "sync", fake.sync_user)
+    # Every test starts with an empty per-container cache, like a cold start.
+    monkeypatch.setattr(auth, "_synced", {})
     return fake
 
 
@@ -54,8 +68,13 @@ def api_request(
     user: str = "user-1",
     body: dict | None = None,
     query: dict[str, str] | None = None,
+    claims: dict[str, str | None] | None = None,
 ) -> tuple[int, Any]:
-    """Call a Lambda handler like API Gateway would, signed in as `user`."""
+    """Call a Lambda handler like API Gateway would, signed in as `user`.
+
+    `claims` replaces the ID token's name and e-mail (default: a name derived from `user`).
+    """
+    claims = {"sub": user, "email": f"{user}@example.ch", "name": user.title(), **(claims or {})}
     event = {
         "httpMethod": method,
         "path": path,
@@ -67,7 +86,7 @@ def api_request(
         "pathParameters": None,
         "body": json.dumps(body) if body is not None else None,
         "isBase64Encoded": False,
-        "requestContext": {"authorizer": {"claims": {"sub": user}}, "stage": "api"},
+        "requestContext": {"authorizer": {"claims": claims}, "stage": "api"},
     }
     response = handler(event, LambdaContext())
     return response["statusCode"], json.loads(response["body"]) if response["body"] else None

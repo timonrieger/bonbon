@@ -74,6 +74,70 @@
         }
       }
     },
+    "/households/{household_id}/members": {
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "GET /households/{household_id}/members",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/households/{household_id}/receipts": {
       "get": {
         "tags": [
@@ -126,6 +190,78 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReceiptList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "POST /households/{household_id}/receipts",
+        "operationId": "createReceipt",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Receipt created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptUpload"
                 }
               }
             }
@@ -379,6 +515,35 @@
       }
     },
     "/households": {
+      "get": {
+        "tags": [
+          "households"
+        ],
+        "summary": "GET /households",
+        "operationId": "listHouseholds",
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HouseholdList"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "households"
@@ -455,6 +620,31 @@
         ],
         "title": "CreateHouseholdRequest"
       },
+      "CreateReceiptRequest": {
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ],
+            "title": "Content Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "maximum": 5242880.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "CreateReceiptRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -500,6 +690,71 @@
           "my_role"
         ],
         "title": "Household"
+      },
+      "HouseholdList": {
+        "properties": {
+          "households": {
+            "items": {
+              "$ref": "#/components/schemas/Household"
+            },
+            "type": "array",
+            "title": "Households"
+          }
+        },
+        "type": "object",
+        "required": [
+          "households"
+        ],
+        "title": "HouseholdList"
+      },
+      "Member": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "member"
+            ],
+            "title": "Role"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "display_name",
+          "role",
+          "joined_at"
+        ],
+        "title": "Member"
+      },
+      "MemberList": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "members"
+        ],
+        "title": "MemberList"
       },
       "MonthTotal": {
         "properties": {
@@ -638,6 +893,10 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "possible_duplicate": {
+            "type": "boolean",
+            "title": "Possible Duplicate"
+          },
           "image_url": {
             "type": "string",
             "title": "Image Url"
@@ -659,6 +918,7 @@
           "total_rappen",
           "uploaded_by_name",
           "created_at",
+          "possible_duplicate",
           "image_url",
           "items"
         ],
@@ -791,6 +1051,10 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "possible_duplicate": {
+            "type": "boolean",
+            "title": "Possible Duplicate"
           }
         },
         "type": "object",
@@ -801,9 +1065,41 @@
           "purchase_date",
           "total_rappen",
           "uploaded_by_name",
-          "created_at"
+          "created_at",
+          "possible_duplicate"
         ],
         "title": "ReceiptSummary"
+      },
+      "ReceiptUpload": {
+        "properties": {
+          "receipt_id": {
+            "type": "string",
+            "title": "Receipt Id"
+          },
+          "upload_url": {
+            "type": "string",
+            "title": "Upload Url"
+          },
+          "upload_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Upload Headers"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "receipt_id",
+          "upload_url",
+          "upload_headers",
+          "expires_in"
+        ],
+        "title": "ReceiptUpload"
       },
       "SpendingTrend": {
         "properties": {

@@ -8,7 +8,8 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 - [ ] Upload a photo (JPG/PNG) or a single-page PDF (optional)
 - [ ] Frontend shrinks images to ~300–500 KB before upload
-- [ ] Upload via presigned URL; file type and size are limited; PDFs with more than one page are rejected
+- [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
+- [ ] PDFs with more than one page are rejected
 - [ ] Processing runs S3 → SQS → worker Lambda
 - [ ] Status visible in the app: processing / done / failed / duplicate
 - [ ] Notification on completion, in-app (required) or e-mail via SNS (optional)
@@ -17,8 +18,46 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - [ ] Same file uploaded twice in a household is detected via file hash → `duplicate`
 - [x] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
 
+## Implementation status
+
+### Frontend (`packages/web`) — @RR02-rr
+
+**Implemented** (`feat/frontend-rabit`):
+
+- `src/components/ReceiptFilePicker.tsx`: file picker with client-side validation
+  - Accepts JPG/PNG only (MIME-type check), rejects all other formats
+  - Rejects files larger than 5 MB with a human-readable size in the error message
+  - Shows selected filename and size; allows replacing or removing the file
+  - Controlled: the parent passes `file` and gets `onChange(file | null)`, so it owns the selection
+- `src/api/receipts.ts`: `uploadToS3(receiptUpload, file)`, a plain `fetch` PUT
+  without the auth header (S3 rejects it) that forwards every header from `upload_headers`
+- `src/pages/HouseholdPage.tsx`: integrates `ReceiptFilePicker` and uploads in one `useMutation`:
+  `createReceipt` (generated, from `@/api`), then `uploadToS3`; shows success and error
+  messages and clears the selection after a successful upload
+
+**Next:**
+
+- Status polling with `refetchInterval` on `getReceipt`
+
+**Still planned:**
+- Status badge: `processing / done / failed / duplicate` (needs `GET /receipts/{id}` with SQL)
+- Client-side image compression to ~300–500 KB (planned: `browser-image-compression`)
+- PDF support (single-page only; rejected with a clear error message)
+
+### Backend / infrastructure — @timonrieger, @Dam-Mil
+
+**Implemented**:
+- S3 bucket with lifecycle rules, CORS, and object-created → SQS notification (`template.yaml`)
+- SQS queue + dead-letter queue; worker skeleton (`handlers/process_receipt.py`)
+- `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
+
+**Planned**:
+- Worker: Textract call, status writes, duplicate detection via file hash
+
 ## Notes
 
-- The receipt id is created when the presigned URL is issued and is part of the S3 key.
+- The receipt id is created when the presigned URL is issued and is part of the S3 key. `POST /households/{household_id}/receipts` returns `receipt_id`, `upload_url`, `upload_headers` and `expires_in` (300 s). The browser sends a `PUT` to `upload_url` with every header from `upload_headers` and the file as body. Type, size and tag are signed into the URL, so S3 rejects anything else.
+- Every upload is tagged `status=pending` via `upload_headers`. The worker must remove the tag once the receipt is processed, otherwise the lifecycle rule deletes the file after 7 days.
 - S3 lifecycle: Glacier Instant Retrieval after 30 days, delete never-processed uploads (tag `status=pending`) after 7 days, abort incomplete multipart uploads after 1 day.
+- The worker sets `duplicate` only for the same file hash in the household. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
 - A Textract mock mode (realistic delay and rate limit) is needed for the load test.

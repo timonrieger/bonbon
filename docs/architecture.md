@@ -33,15 +33,14 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway | scaffolded | @timonrieger, @nosernoel |
 | RDS PostgreSQL, security groups, secrets, migration Lambda (`mise run db:migrate`) | scaffolded | @nosernoel |
-| DynamoDB table | unused, removed once all domains are on PostgreSQL | @nosernoel |
-| Households API (create, get) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
+| Households API (list, create, get, members) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
-| Presigned upload endpoint | planned | @timonrieger, @RR02-rr |
+| Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
 | Worker split: Textract Lambda outside the VPC, results queue, DB Lambda inside ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned (stage 2) | @timonrieger, @Dam-Mil |
 | Worker logic: Textract, categorization, status | planned | @Dam-Mil |
-| Receipt list and detail API (`ReceiptsFunction`) | contract only, routes answer 501 | @nosernoel |
-| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | contract only, routes answer 501 | @nosernoel |
+| Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
+| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
 | S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
@@ -51,10 +50,10 @@ Update the status column when something lands.
 
 ## Upload flow
 
-1. Frontend asks the API for a presigned URL. The API creates the receipt id and puts it in the S3 key: `households/<householdId>/receipts/<receiptId>` (built by `bonbon/receipts/storage.py`).
-2. Frontend uploads directly to S3. The request ends there.
+1. Frontend asks the API for a presigned URL (`createReceipt`). The API inserts the receipt row (status `uploaded`) and puts its id in the S3 key: `households/<householdId>/receipts/<receiptId>` (built by `bonbon/receipts/storage.py`). The URL is signed locally, so the VPC Lambda needs no route to S3. Content type, size (max. 5 MB) and the tag `status=pending` are part of the signature.
+2. Frontend uploads directly to S3 with a `PUT` and the returned `upload_headers`. The request ends there.
 3. S3 event (keys under `households/`) → SQS → Textract Lambda, one message at a time, max 10 in parallel. It runs outside the VPC, calls Textract, stores the raw result in S3 outside `households/` (so it doesn't trigger itself) and sends the key to the results queue.
-4. Results queue → DB Lambda inside the VPC. It switches status `uploaded → processing` with `UPDATE … WHERE status = 'uploaded'`, so a duplicate delivery is dropped, then categorizes items by keyword rules, writes receipt and items, sets `done`.
+4. Results queue → DB Lambda inside the VPC. It switches status `uploaded → processing` with `UPDATE … WHERE status = 'uploaded'`, so a duplicate delivery is dropped, then categorizes items by keyword rules, writes receipt and items, sets `done`. The worker removes the `status=pending` tag from the file, so the lifecycle rule keeps it.
 5. SNS notifies the user (from outside the VPC). The frontend polls the status.
 6. After 3 failed attempts a message goes to the dead-letter queue of its queue.
 
@@ -62,20 +61,21 @@ Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials
 
 ## Data model
 
-PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrations/`](../packages/api/src/bonbon/migrations/) ([0006](decisions/0006-postgresql-on-rds.md)). Amounts are integers in Rappen. User ids are Cognito ids (`sub`); there is no users table.
+PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrations/`](../packages/api/src/bonbon/migrations/) ([0006](decisions/0006-postgresql-on-rds.md)). Amounts are integers in Rappen. User ids are Cognito ids (`sub`). Cognito handles sign-in; the `users` table keeps the display name and e-mail from the ID token, synced on every request in `bonbon/auth.py`.
 
 | Table | Key | Notes | Status |
 |---|---|---|---|
+| `users` | `user_id` (Cognito `sub`) | display_name (token `name`, or the e-mail prefix for accounts without one), email | implemented |
 | `households` | `id` uuid | name, created_at | implemented |
-| `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household | implemented |
+| `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household; a user with memberships can't be deleted | implemented |
 | `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
-| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | schema only |
-| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | schema only |
-| `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | schema only |
+| `receipts` | `id` uuid | uploaded_by, status `uploaded`/`processing`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | read by the API; written by the worker later |
+| `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | read by the API; written by the worker later |
+| `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | `categories` read by the API; rules schema only |
 | `join_attempts` | `id` | rate limit for joining | schema only |
 | `schema_migrations` | `version` | applied migration files | implemented |
 
-Deleting a household cascades to memberships, invite codes and receipts; deleting a receipt cascades to its items. Monthly totals are computed with `GROUP BY` at query time, nothing is pre-aggregated.
+Deleting a household cascades to memberships, invite codes and receipts; deleting a receipt cascades to its items. Deleting a user sets `receipts.uploaded_by` to NULL and removes their join attempts; their memberships have to be gone first (account deletion leaves all households). Monthly totals are computed with `GROUP BY` at query time, nothing is pre-aggregated.
 
 ## Security
 

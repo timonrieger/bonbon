@@ -1,0 +1,416 @@
+/**
+ * ReceiptCorrectionForm – display and locally edit an auto-extracted receipt.
+ *
+ * Shows the recognised header (store, date, total) and all line items.
+ * Every field that the data model allows to be corrected is an editable input.
+ * The component is intentionally decoupled from the API: it validates locally,
+ * converts the draft back to Rappen and calls `onSave(correction)` so the parent
+ * can issue the PATCH request once PATCH /households/{id}/receipts/{id} exists.
+ *
+ * What this component does NOT do:
+ *  - Fetch receipt data  (GET /households/{id}/receipts/{id} – returns 501 today)
+ *  - Save to the backend (PATCH endpoint not yet designed)
+ *
+ * See docs/features/02-extraction-categorization.md.
+ */
+import { useId, useState } from 'react';
+import type { ReceiptDetail, ReceiptItem } from '@/api';
+import { formatRappen } from '@/api/receipts';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Form state of one ReceiptItem. Numeric fields are strings so HTML inputs don't
+ * lose the user's partial input mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
+ * An empty `unit_price_chf` means null.
+ */
+type ReceiptItemDraft = Pick<ReceiptItem, 'position' | 'name' | 'category'> & {
+  quantity: string;
+  unit_price_chf: string;
+  amount_chf: string;
+};
+
+/** Form state of the editable ReceiptDetail fields; an empty string means null. */
+type ReceiptDraft = Record<'store' | 'purchase_date', string> & { items: ReceiptItemDraft[] };
+
+/**
+ * The editable part of ReceiptDetail, validated and back in API units.
+ *
+ * TODO: replace with the generated PATCH request type once
+ *       PATCH /households/{id}/receipts/{id} exists and `mise run generate` ran.
+ */
+export type ReceiptCorrection = Pick<ReceiptDetail, 'store' | 'purchase_date' | 'items'>;
+
+/** Callback for ReceiptCorrectionForm's onSave prop; the parent issues the PATCH request. */
+export type SaveReceiptCorrection = (correction: ReceiptCorrection) => void;
+
+export interface ReceiptCorrectionFormProps {
+  /** Receipt as returned by GET /households/{id}/receipts/{id}. */
+  receipt: ReceiptDetail;
+  /**
+   * Called with the validated correction (in Rappen) when the user submits.
+   * The save button stays disabled until the PATCH endpoint exists.
+   * Pass a no-op `() => {}` for now; wire up `useMutation` later.
+   */
+  onSave: SaveReceiptCorrection;
+  /** Whether a save operation is currently in flight (disables the form). */
+  isSaving?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function rappenToInput(rappen: number | null): string {
+  if (rappen === null) return '';
+  return (rappen / 100).toFixed(2);
+}
+
+/** Parse a non-negative decimal that may use a comma; null if empty or invalid. */
+function parseDecimal(value: string): number | null {
+  if (value.trim() === '') return null;
+  const n = Number.parseFloat(value.replace(',', '.'));
+  if (Number.isNaN(n) || n < 0) return null;
+  return n;
+}
+
+function inputToRappen(value: string): number | null {
+  const chf = parseDecimal(value);
+  return chf === null ? null : Math.round(chf * 100);
+}
+
+function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
+  return {
+    position: item.position,
+    name: item.name,
+    quantity: String(item.quantity),
+    unit_price_chf: rappenToInput(item.unit_price_rappen),
+    amount_chf: rappenToInput(item.amount_rappen),
+    category: item.category
+  };
+}
+
+function receiptToDraft(receipt: ReceiptDetail): ReceiptDraft {
+  return {
+    store: receipt.store ?? '',
+    purchase_date: receipt.purchase_date ?? '',
+    items: receipt.items.map(itemToDraft)
+  };
+}
+
+/** Convert a validated draft back to API units. Only call after validate() passed. */
+function draftToCorrection(draft: ReceiptDraft): ReceiptCorrection {
+  return {
+    store: draft.store.trim() === '' ? null : draft.store.trim(),
+    purchase_date: draft.purchase_date === '' ? null : draft.purchase_date,
+    items: draft.items.map((item) => ({
+      position: item.position,
+      name: item.name.trim(),
+      quantity: parseDecimal(item.quantity) ?? 0,
+      unit_price_rappen: inputToRappen(item.unit_price_chf),
+      amount_rappen: inputToRappen(item.amount_chf) ?? 0,
+      category: item.category.trim()
+    }))
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-component: a single item row
+// ---------------------------------------------------------------------------
+
+interface ItemRowProps {
+  item: ReceiptItemDraft;
+  index: number;
+  baseId: string;
+  disabled: boolean;
+  onChange: (index: number, field: keyof ReceiptItemDraft, value: string) => void;
+}
+
+function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
+  const rowId = `${baseId}-item-${item.position}`;
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="py-1.5 pr-2">
+        <label className="sr-only" htmlFor={`${rowId}-name`}>
+          Bezeichnung Pos. {item.position}
+        </label>
+        <input
+          id={`${rowId}-name`}
+          type="text"
+          value={item.name}
+          disabled={disabled}
+          onChange={(e) => onChange(index, 'name', e.target.value)}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
+          required
+        />
+      </td>
+      <td className="py-1.5 pr-2 w-20">
+        <label className="sr-only" htmlFor={`${rowId}-qty`}>
+          Menge Pos. {item.position}
+        </label>
+        <input
+          id={`${rowId}-qty`}
+          type="number"
+          value={item.quantity}
+          min="0"
+          step="0.001"
+          disabled={disabled}
+          onChange={(e) => onChange(index, 'quantity', e.target.value)}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
+        />
+      </td>
+      <td className="py-1.5 pr-2 w-24">
+        <label className="sr-only" htmlFor={`${rowId}-unit`}>
+          Stückpreis Pos. {item.position} (CHF)
+        </label>
+        <input
+          id={`${rowId}-unit`}
+          type="number"
+          value={item.unit_price_chf}
+          placeholder="–"
+          min="0"
+          step="0.05"
+          disabled={disabled}
+          onChange={(e) => onChange(index, 'unit_price_chf', e.target.value)}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
+        />
+      </td>
+      <td className="py-1.5 pr-2 w-24">
+        <label className="sr-only" htmlFor={`${rowId}-amt`}>
+          Betrag Pos. {item.position} (CHF)
+        </label>
+        <input
+          id={`${rowId}-amt`}
+          type="number"
+          value={item.amount_chf}
+          min="0"
+          step="0.05"
+          disabled={disabled}
+          onChange={(e) => onChange(index, 'amount_chf', e.target.value)}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
+          required
+        />
+      </td>
+      <td className="py-1.5 w-32">
+        <label className="sr-only" htmlFor={`${rowId}-cat`}>
+          Kategorie Pos. {item.position}
+        </label>
+        <input
+          id={`${rowId}-cat`}
+          type="text"
+          value={item.category}
+          disabled={disabled}
+          onChange={(e) => onChange(index, 'category', e.target.value)}
+          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
+          required
+        />
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+interface FormErrors {
+  purchase_date?: string;
+  items: Record<number, Partial<Record<keyof ReceiptItemDraft, string>>>;
+}
+
+function validate(draft: ReceiptDraft): FormErrors {
+  const errors: FormErrors = { items: {} };
+
+  if (draft.purchase_date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.purchase_date)) {
+    errors.purchase_date = 'Bitte ein gültiges Datum eingeben (TT.MM.JJJJ).';
+  }
+
+  for (const [i, item] of draft.items.entries()) {
+    const itemErrors: Partial<Record<keyof ReceiptItemDraft, string>> = {};
+    if (item.name.trim() === '') {
+      itemErrors.name = 'Bezeichnung darf nicht leer sein.';
+    }
+    if (parseDecimal(item.quantity) === null) {
+      itemErrors.quantity = 'Ungültige Menge.';
+    }
+    if (item.unit_price_chf.trim() !== '' && inputToRappen(item.unit_price_chf) === null) {
+      itemErrors.unit_price_chf = 'Ungültiger Stückpreis.';
+    }
+    if (inputToRappen(item.amount_chf) === null) {
+      itemErrors.amount_chf = 'Betrag fehlt oder ist ungültig.';
+    }
+    if (item.category.trim() === '') {
+      itemErrors.category = 'Kategorie darf nicht leer sein.';
+    }
+    if (Object.keys(itemErrors).length > 0) {
+      errors.items[i] = itemErrors;
+    }
+  }
+
+  return errors;
+}
+
+function hasErrors(e: FormErrors): boolean {
+  return Boolean(e.purchase_date || Object.keys(e.items).length > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
+export function ReceiptCorrectionForm({
+  receipt,
+  onSave,
+  isSaving = false
+}: ReceiptCorrectionFormProps) {
+  const baseId = useId();
+
+  const [draft, setDraft] = useState<ReceiptDraft>(() => receiptToDraft(receipt));
+  const [submitted, setSubmitted] = useState(false);
+
+  // Reset the draft only when a different receipt is shown. A refetch of the same
+  // receipt (new object, same id) must not wipe the user's unsaved edits.
+  const [draftReceiptId, setDraftReceiptId] = useState(receipt.id);
+  if (receipt.id !== draftReceiptId) {
+    setDraftReceiptId(receipt.id);
+    setDraft(receiptToDraft(receipt));
+    setSubmitted(false);
+  }
+
+  // Errors only show after the first submit attempt, then update as the user types.
+  const errors: FormErrors = submitted ? validate(draft) : { items: {} };
+
+  function handleHeaderChange(field: 'store' | 'purchase_date', value: string) {
+    setDraft({ ...draft, [field]: value });
+  }
+
+  function handleItemChange(index: number, field: keyof ReceiptItemDraft, value: string) {
+    const nextItems = draft.items.map((item, i) =>
+      i === index ? { ...item, [field]: value } : item
+    );
+    setDraft({ ...draft, items: nextItems });
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitted(true);
+    if (hasErrors(validate(draft))) return;
+    onSave(draftToCorrection(draft));
+  }
+
+  return (
+    <form onSubmit={handleSubmit} noValidate aria-label="Kassenzettel korrigieren">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:gap-6">
+        {/* Store */}
+        <div className="flex flex-col gap-1 sm:flex-1">
+          <label htmlFor={`${baseId}-store`} className="text-sm font-medium">
+            Geschäft
+          </label>
+          <input
+            id={`${baseId}-store`}
+            type="text"
+            value={draft.store}
+            placeholder="Nicht erkannt"
+            disabled={isSaving}
+            onChange={(e) => handleHeaderChange('store', e.target.value)}
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
+          />
+        </div>
+
+        {/* Purchase date */}
+        <div className="flex flex-col gap-1 sm:w-44">
+          <label htmlFor={`${baseId}-date`} className="text-sm font-medium">
+            Kaufdatum
+          </label>
+          <input
+            id={`${baseId}-date`}
+            type="date"
+            value={draft.purchase_date}
+            disabled={isSaving}
+            onChange={(e) => handleHeaderChange('purchase_date', e.target.value)}
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
+            aria-describedby={errors.purchase_date ? `${baseId}-date-error` : undefined}
+          />
+          {errors.purchase_date && (
+            <p id={`${baseId}-date-error`} role="alert" className="text-xs text-red-600">
+              {errors.purchase_date}
+            </p>
+          )}
+        </div>
+
+        {/* Total – read-only */}
+        <div className="flex flex-col gap-1 sm:w-32">
+          <span className="text-sm font-medium">Total</span>
+          <span className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+            {formatRappen(receipt.total_rappen)}
+          </span>
+          <span className="text-xs text-gray-400">Wird aus den Positionen berechnet</span>
+        </div>
+      </div>
+
+      {/* ── Line items ─────────────────────────────────────────── */}
+      {draft.items.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" aria-label="Positionen">
+            <thead>
+              <tr className="text-left text-xs text-gray-500">
+                <th className="pb-2 pr-2 font-medium">Bezeichnung</th>
+                <th className="pb-2 pr-2 font-medium w-20">Menge</th>
+                <th className="pb-2 pr-2 font-medium w-24">Stückpreis</th>
+                <th className="pb-2 pr-2 font-medium w-24">Betrag</th>
+                <th className="pb-2 font-medium w-32">Kategorie</th>
+              </tr>
+            </thead>
+            <tbody>
+              {draft.items.map((item, index) => (
+                <ItemRow
+                  key={item.position}
+                  item={item}
+                  index={index}
+                  baseId={baseId}
+                  disabled={isSaving}
+                  onChange={handleItemChange}
+                />
+              ))}
+            </tbody>
+          </table>
+
+          {/* Per-item errors rendered below the table to keep the layout clean */}
+          {Object.entries(errors.items).map(([i, itemErrors]) =>
+            Object.entries(itemErrors).map(([field, msg]) => (
+              <p key={`${i}-${field}`} role="alert" className="mt-1 text-xs text-red-600">
+                Pos. {draft.items[Number(i)]?.position}: {msg}
+              </p>
+            ))
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">
+          Keine Positionen erkannt. Das Backend hat den Kassenzettel noch nicht verarbeitet oder die
+          Extraktion ist fehlgeschlagen.
+        </p>
+      )}
+
+      {/* ── Save button ────────────────────────────────────────── */}
+      <div className="mt-6 flex items-center gap-3">
+        {/*
+         * The button is disabled until PATCH /households/{id}/receipts/{id} exists.
+         * To activate: remove `disabled`, pass a real `onSave` from useMutation.
+         * See docs/features/02-extraction-categorization.md.
+         */}
+        <button
+          type="submit"
+          disabled
+          className="rounded bg-black px-4 py-2 text-sm text-white opacity-50"
+          title="Speichern wird verfügbar, sobald der Backend-Endpunkt fertiggestellt ist"
+        >
+          {isSaving ? 'Wird gespeichert…' : 'Korrekturen speichern'}
+        </button>
+        <span className="text-xs text-gray-400">Speichern wird demnächst verfügbar</span>
+      </div>
+    </form>
+  );
+}
