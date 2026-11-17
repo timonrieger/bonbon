@@ -90,10 +90,13 @@ def join(code: str, user_id: str) -> Household:
 
     404 for an unknown, expired or used code, which also counts as a failed attempt; 409 if the
     user is a member already (the code stays valid); 429 after MAX_FAILED_JOINS failed attempts
-    in the last hour. Counting and inserting aren't atomic, so parallel requests can get a few
-    more guesses in; at about 40 bits per code that doesn't matter.
+    in the last hour, also for parallel requests.
     """
     with db.transaction() as conn:
+        # One join per user at a time, so counting and recording attempts can't interleave.
+        # The users row always exists (current_user_id syncs it first). NO KEY UPDATE doesn't
+        # block inserts elsewhere that reference the user through a foreign key.
+        conn.run("SELECT 1 FROM users WHERE user_id = :user_id FOR NO KEY UPDATE", user_id=user_id)
         conn.run(
             "DELETE FROM join_attempts WHERE user_id = :user_id"
             " AND attempted_at <= now() - interval '1 hour'",
@@ -117,19 +120,15 @@ def join(code: str, user_id: str) -> Household:
             household = None
         else:
             [[household_id]] = rows
-            if conn.run(
-                "SELECT 1 FROM memberships WHERE household_id = :household_id"
-                " AND user_id = :user_id",
+            # Checked by the insert itself; the rollback leaves the code valid.
+            if not conn.run(
+                "INSERT INTO memberships (household_id, user_id, role)"
+                " VALUES (:household_id, :user_id, 'member')"
+                " ON CONFLICT (household_id, user_id) DO NOTHING RETURNING 1",
                 household_id=household_id,
                 user_id=user_id,
             ):
                 raise ServiceError(409, "Already a member of this household")
-            conn.run(
-                "INSERT INTO memberships (household_id, user_id, role)"
-                " VALUES (:household_id, :user_id, 'member')",
-                household_id=household_id,
-                user_id=user_id,
-            )
             conn.run(
                 "UPDATE invite_codes SET used_at = now() WHERE code_hash = :code_hash",
                 code_hash=codes.code_hash(code),
