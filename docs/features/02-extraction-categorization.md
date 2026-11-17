@@ -6,7 +6,7 @@
 
 - [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
 - [ ] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
-- [ ] Every item gets a category from the keyword rule table; no match → "Sonstiges"
+- [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
 - [ ] Manual correction of items, prices and categories (optional: categories only); API done (#26), UI wiring open
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
@@ -52,12 +52,24 @@
 | Route | Frontend function | What it does |
 |---|---|---|
 | `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Fields left out stay, `null` clears them; `items` replaces all items. Returns the corrected `ReceiptDetail` |
-| `GET /categories` | `listCategories` | All category names, sorted; the same for every household |
+| `GET /categories` | `listCategories` | All category names, sorted, «Sonstiges» last; the same for every household |
 
 - 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
 - Item names and categories are trimmed and must not be empty; quantity > 0 (three decimals kept); positions unique; amounts may be negative.
 - The total is never computed from the items: vouchers are often not line items (see Notes).
 - One transaction; the reports sum at query time, so the dashboard shows the correction immediately.
+
+### Backend (`packages/api`) — @Dam-Mil
+
+**Implemented**:
+- Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
+- Categorization: fixed category list + keyword rules seeded in migration 0006, and
+  `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
+  (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
+
+**Planned**:
+- Database Lambda writes items with their category via `categorize()` (#38)
+- Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
 ## Rules
 

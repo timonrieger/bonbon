@@ -36,6 +36,10 @@ export type Member = {
 export type MemberList = {
     members: Member[];
 };
+export type InviteCode = {
+    code: string;
+    expires_at: string;
+};
 export type ReceiptSummary = {
     id: string;
     status: Status;
@@ -124,6 +128,9 @@ export type HouseholdList = {
 export type CreateHouseholdRequest = {
     name: string;
 };
+export type JoinRequest = {
+    code: string;
+};
 export type CategoryList = {
     categories: string[];
 };
@@ -169,6 +176,29 @@ export function listMembers({ householdId }: {
         data: HttpValidationError;
     }>(`/households/${encodeURIComponent(householdId)}/members`, {
         ...opts
+    }));
+}
+/**
+ * POST /households/{household_id}/invites
+ */
+export function createInvite({ householdId }: {
+    householdId: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 201;
+        data: InviteCode;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/invites`, {
+        ...opts,
+        method: "POST"
     }));
 }
 /**
@@ -356,6 +386,42 @@ export function createHousehold({ createHouseholdRequest }: {
         ...opts,
         method: "POST",
         body: createHouseholdRequest
+    })));
+}
+/**
+ * POST /households/join
+ */
+export function joinHousehold({ joinRequest }: {
+    joinRequest: JoinRequest;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: Household;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 409;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    } | {
+        status: 429;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    }>("/households/join", oazapfts.json({
+        ...opts,
+        method: "POST",
+        body: joinRequest
     })));
 }
 /**

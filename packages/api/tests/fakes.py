@@ -14,7 +14,10 @@ from uuid import UUID, uuid4
 
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError, ServiceError
 from bonbon.auth import Role
-from bonbon.households.models import Household, Member
+from bonbon.households import codes
+from bonbon.households.models import Household, InviteCode, Member
+from bonbon.households.repo import INVITE_VALID_HOURS, MAX_FAILED_JOINS
+from bonbon.receipts.categories import DEFAULT_CATEGORY
 from bonbon.receipts.models import (
     ReceiptCorrection,
     ReceiptItem,
@@ -48,6 +51,13 @@ class FakeReceipt:
         return self.purchase_date or self.created_at.date()
 
 
+@dataclass
+class FakeInvite:
+    household_id: UUID
+    expires_at: datetime
+    used_at: datetime | None = None
+
+
 class FakeDatabase:
     def __init__(self) -> None:
         self.households: dict[UUID, tuple[str, datetime]] = {}
@@ -58,6 +68,10 @@ class FakeDatabase:
         self.receipts: dict[UUID, FakeReceipt] = {}
         # Migration 0002 adds 'Sonstiges'; tests add more.
         self.categories: set[str] = {"Sonstiges"}
+        # code hash -> invite; only the hash is kept, like in invite_codes
+        self.invites: dict[str, FakeInvite] = {}
+        # (user id, attempted_at) of failed joins
+        self.join_attempts: list[tuple[str, datetime]] = []
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -103,11 +117,40 @@ class FakeDatabase:
         ]
         return sorted(members, key=lambda m: (m.role != "owner", m.joined_at, m.display_name))
 
+    def create_invite(self, household_id: str) -> InviteCode:
+        now = datetime.now(UTC)
+        self.invites = {
+            h: i
+            for h, i in self.invites.items()
+            if i.household_id != UUID(household_id) or (i.used_at is None and i.expires_at > now)
+        }
+        code = codes.generate()
+        expires_at = now + timedelta(hours=INVITE_VALID_HOURS)
+        self.invites[codes.code_hash(code)] = FakeInvite(UUID(household_id), expires_at)
+        return InviteCode(code=code, expires_at=expires_at)
+
+    def join(self, code: str, user_id: str) -> Household:
+        now = datetime.now(UTC)
+        self.join_attempts = [
+            (u, t) for u, t in self.join_attempts if u != user_id or t > now - timedelta(hours=1)
+        ]
+        if sum(u == user_id for u, _ in self.join_attempts) >= MAX_FAILED_JOINS:
+            raise ServiceError(429, "Too many failed attempts, try again later")
+        invite = self.invites.get(codes.code_hash(code))
+        if invite is None or invite.used_at is not None or invite.expires_at <= now:
+            self.join_attempts.append((user_id, now))
+            raise NotFoundError("Invite code not found, expired or already used")
+        if (invite.household_id, user_id) in self.memberships:
+            raise ServiceError(409, "Already a member of this household")
+        self.add_member(invite.household_id, user_id)
+        invite.used_at = now
+        return self.get_household(str(invite.household_id), "member")
+
     # bonbon.users.repo
     def sync_user(self, user_id: str, display_name: str, email: str | None) -> None:
         self.users[user_id] = (display_name, email)
 
-    # Test setup: memberships that later features (joining by invite code) will create.
+    # Test setup: a member without going through an invite code.
     def add_member(self, household_id: UUID, user_id: str, role: Role = "member") -> None:
         # Like the foreign key: the user must have made a request before.
         assert user_id in self.users, f"unknown user {user_id}"
@@ -167,7 +210,7 @@ class FakeDatabase:
             )
 
     def category_names(self) -> list[str]:
-        return sorted(self.categories)
+        return sorted(self.categories, key=lambda name: (name == DEFAULT_CATEGORY, name))
 
     def _summary(self, receipt_id: UUID, r: FakeReceipt) -> ReceiptSummary:
         same = (r.store, r.purchase_date, r.total_rappen)
