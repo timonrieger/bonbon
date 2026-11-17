@@ -18,6 +18,7 @@ Everything runs through mise. Never call `pip`, `npm`, `sam deploy` etc. directl
 | `mise run stack:up` | Full deploy of the developer's own dev stack, then database migrations |
 | `mise run db:migrate [status]` | Apply migrations (or show their status) on the dev stack's database |
 | `mise run db:stop` / `stack:down` | Stop the dev database / delete the whole dev stack |
+| `mise run stack:workers` | Turn the worker queue triggers back on (a new lab session leaves them off) |
 | `mise tasks --all` | List all tasks |
 
 ## Repo map
