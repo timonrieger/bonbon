@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --script
-# [MISE] description="Build the frontend and publish it to Amplify Hosting on prod. Only the infra owner runs this, from main"
+# [MISE] description="Build the frontend and publish it to Amplify Hosting (prod only)"
 # [MISE] confirm="Deploy the frontend to PROD (stack bonbon-prod in the current AWS account)?"
 # /// script
 # requires-python = ">=3.14"
@@ -53,7 +53,7 @@ with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
 # Manual deploy: Amplify hands out an upload URL per job and publishes the zip as a whole.
 deployment = aws("amplify", "create-deployment", "--app-id", app_id, "--branch-name", "main")
 upload = urllib.request.Request(deployment["zipUploadUrl"], data=archive.getvalue(), method="PUT")
-urllib.request.urlopen(upload).close()  # noqa: S310 (presigned https URL from Amplify)
+urllib.request.urlopen(upload).close()
 job = deployment["jobId"]
 aws("amplify", "start-deployment", "--app-id", app_id, "--branch-name", "main", "--job-id", job)
 

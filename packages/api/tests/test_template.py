@@ -1,4 +1,4 @@
-"""Checks on template.yaml that a deploy would only catch late (or, for prod-only parts, never on dev)."""
+"""Checks on template.yaml that a deploy catches late, or for prod-only parts never on dev."""
 
 import re
 from pathlib import Path
@@ -31,7 +31,7 @@ Loader.add_multi_constructor(
 
 @pytest.fixture(scope="module")
 def template() -> dict[str, Any]:
-    return yaml.load(TEMPLATE.read_text(), Loader=Loader)  # noqa: S506 (SafeLoader subclass)
+    return yaml.load(TEMPLATE.read_text(), Loader=Loader)
 
 
 def unquote(origin: Any) -> Any:
@@ -55,7 +55,9 @@ def test_every_cors_origin_is_the_same(template: dict[str, Any]) -> None:
         ],
         "Api Cors": unquote(api["Cors"]["AllowOrigin"]),
         **{
-            f"Api {name}": unquote(response["ResponseParameters"]["Headers"]["Access-Control-Allow-Origin"])
+            f"Api {name}": unquote(
+                response["ResponseParameters"]["Headers"]["Access-Control-Allow-Origin"]
+            )
             for name, response in api["GatewayResponses"].items()
         },
         "ReceiptsBucket CORS": resources["ReceiptsBucket"]["Properties"]["CorsConfiguration"][
