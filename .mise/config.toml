@@ -98,3 +98,14 @@ run = [
   "sam deploy --config-env prod --parameter-overrides \"Stage=prod $(.mise/tasks/stack-params.py bonbon-prod)\"",
 ]
 description = "Deploy the production stack. Only the infra owner runs this, from main"
+
+# Prod only: dev stacks have no web bucket (template.yaml, IsProd). Run after deploy:prod.
+[tasks."deploy:web"]
+confirm = "Deploy the frontend to PROD (stack bonbon-prod in the current AWS account)?"
+run = [
+  ".mise/tasks/env.py bonbon-prod .env.production.local",
+  { task = "//packages/web:build" },
+  "aws s3 sync packages/web/dist \"s3://$(aws cloudformation describe-stacks --stack-name bonbon-prod --query \"Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue\" --output text)\" --delete",
+  "aws cloudfront create-invalidation --paths '/*' --query Invalidation.Id --output text --distribution-id \"$(aws cloudformation describe-stacks --stack-name bonbon-prod --query \"Stacks[0].Outputs[?OutputKey=='WebDistributionId'].OutputValue\" --output text)\"",
+]
+description = "Build the frontend and publish it to the prod CloudFront distribution. Only the infra owner runs this, from main"

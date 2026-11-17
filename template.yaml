@@ -32,6 +32,9 @@ Parameters:
 
 Conditions:
   CreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, "true"]
+  # The hosted frontend (WebBucket, WebDistribution) exists only on prod; dev stacks use
+  # `mise run dev` on localhost.
+  IsProd: !Equals [!Ref Stage, prod]
 
 # Single source for the retry count: the ReceiptsQueue redrive policy and the Textract Lambda's
 # MAX_RECEIVE_COUNT read the same value, so "last attempt" in the code always matches the point
@@ -52,6 +55,8 @@ Globals:
         RECEIPTS_BUCKET: !Ref ReceiptsBucket
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
+        # The only origin the API answers with CORS headers (bonbon/http.py)
+        ALLOWED_ORIGIN: !If [IsProd, !Sub "https://${WebDistribution.DomainName}", "http://localhost:5173"]
 
 Resources:
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
@@ -182,8 +187,9 @@ Resources:
           HttpMethod: "*"
           ThrottlingRateLimit: 25
           ThrottlingBurstLimit: 50
+      # Only the app's own origin: CloudFront on prod, the Vite dev server on dev.
       Cors:
-        AllowOrigin: "'*'"
+        AllowOrigin: !If [IsProd, !Sub "'https://${WebDistribution.DomainName}'", "'http://localhost:5173'"]
         AllowHeaders: "'Authorization,Content-Type'"
         AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
       Auth:
@@ -197,12 +203,12 @@ Resources:
         DEFAULT_4XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !If [IsProd, !Sub "'https://${WebDistribution.DomainName}'", "'http://localhost:5173'"]
               Access-Control-Allow-Headers: "'Authorization,Content-Type'"
         DEFAULT_5XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !If [IsProd, !Sub "'https://${WebDistribution.DomainName}'", "'http://localhost:5173'"]
               Access-Control-Allow-Headers: "'Authorization,Content-Type'"
 
   # One function per domain; routes inside it are handled by Powertools.
@@ -353,7 +359,7 @@ Resources:
           - ObjectOwnership: BucketOwnerEnforced
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins: ["*"]
+          - AllowedOrigins: [!If [IsProd, !Sub "https://${WebDistribution.DomainName}", "http://localhost:5173"]]
             AllowedMethods: [PUT, GET]
             AllowedHeaders: ["*"]
             MaxAge: 3600
@@ -526,6 +532,90 @@ Resources:
           DB_APP_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
           DB_APP_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
 
+  # The built React app (packages/web/dist), uploaded by `mise run deploy:web`. Prod only.
+  # Private: only WebDistribution may read it, through origin access control (no IAM involved).
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Condition: IsProd
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: IsProd
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt WebBucket.Arn
+              - !Sub ${WebBucket.Arn}/*
+            Condition:
+              Bool: { aws:SecureTransport: false }
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub ${WebBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}
+
+  WebOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Condition: IsProd
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub bonbon-web-${Stage}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  WebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: IsProd
+    Properties:
+      DistributionConfig:
+        Comment: !Sub Bonbon ${Stage} web app
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: web
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt WebOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: web
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          # Managed policies CachingOptimized and SecurityHeadersPolicy. Asset file names are
+          # hashed; index.html is refreshed by the invalidation in `mise run deploy:web`.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+        # Client-side routes (BrowserRouter) aren't files in the bucket. Without ListBucket, S3
+        # answers a missing key with 403, so both codes serve index.html and the router takes over.
+        CustomErrorResponses:
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html }
+
 Outputs:
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api
@@ -537,3 +627,12 @@ Outputs:
     Value: !Ref MigrateFunction
   DbInstanceId:
     Value: !Ref Database
+  WebUrl:
+    Condition: IsProd
+    Value: !Sub https://${WebDistribution.DomainName}
+  WebBucketName:
+    Condition: IsProd
+    Value: !Ref WebBucket
+  WebDistributionId:
+    Condition: IsProd
+    Value: !Ref WebDistribution

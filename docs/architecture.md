@@ -45,7 +45,7 @@ flowchart LR
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
-| S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
+| S3 + CloudFront hosting: private web bucket, origin access control, `WebUrl` output (`mise run deploy:web`) | scaffolded (prod stack only) | @timonrieger |
 | CloudWatch alarms + dashboard | planned | @schmid277 |
 
 Update the status column when something lands.
@@ -85,6 +85,9 @@ Deleting a household cascades to memberships, invite codes and receipts; deletin
 - Every Lambda additionally checks household membership in the database (`require_membership`), so leaving a household takes effect immediately.
 - Non-members get 404, not 403, so household ids can't be probed.
 - Receipts live in a private, encrypted bucket and are reachable only via short-lived presigned URLs.
+- CORS (API Gateway, the Lambdas' own headers via `ALLOWED_ORIGIN`, the receipts bucket) allows only the app's origin: the CloudFront URL on prod, `http://localhost:5173` on dev stacks.
+- The web app's bucket is private as well; only the CloudFront distribution can read it (origin access control, a bucket policy instead of IAM).
+- Cognito needs no app URLs: the frontend signs in with SRP through Amplify, not the hosted UI, so there are no callback or logout URLs to register.
 - The database is private (no public access), in the default VPC, and accepts port 5432 only from the Lambda security group. Connections use TLS with certificate verification.
 - API and worker Lambdas connect as `bonbon_app` (data only, no schema changes); only the migration Lambda has the master user.
 - Learner Lab limitation: all functions share the `LabRole`, so per-function least-privilege IAM isn't possible. This is documented as a known limitation.
@@ -95,6 +98,6 @@ Deleting a household cascades to memberships, invite codes and receipts; deletin
 | Stack | Account | Deployed by | How |
 |---|---|---|---|
 | `bonbon-dev` | each person's own Learner Lab | that person | `mise run dev` / `mise run stack:up` |
-| `bonbon-prod` | @timonrieger's Learner Lab | @timonrieger | `mise run deploy:prod` from `main` |
+| `bonbon-prod` | @timonrieger's Learner Lab | @timonrieger | `mise run deploy:prod`, then `mise run deploy:web` (frontend to S3 + CloudFront), from `main` |
 
 See [decisions/0004](decisions/0004-per-person-cloud-dev-stacks.md).
