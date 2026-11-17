@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Transform: AWS::Serverless-2016-10-31
+# LanguageExtensions first: it resolves !If in DeletionPolicy/UpdateReplacePolicy (Database),
+# which plain CloudFormation doesn't allow.
+Transform: [AWS::LanguageExtensions, AWS::Serverless-2016-10-31]
 Description: Bonbon, receipt digitization for shared households
 
 # Learner Lab rules (see docs/decisions/0001-learner-lab-constraints.md):
@@ -32,8 +34,8 @@ Parameters:
 
 Conditions:
   CreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, "true"]
-  # The hosted frontend (WebApp, WebBranch) exists only on prod; dev stacks use
-  # `mise run dev` on localhost.
+  # Prod-only: the hosted frontend (WebApp, WebBranch; dev uses `mise run dev` on localhost) and
+  # database backups and final snapshots (Database).
   IsProd: !Equals [!Ref Stage, prod]
 
 # Single source for the retry count: the ReceiptsQueue redrive policy and the Textract Lambda's
@@ -64,9 +66,10 @@ Resources:
   # no RDS Proxy and no IAM database auth.
   Database:
     Type: AWS::RDS::DBInstance
-    # Dev data is disposable. Switch both to Snapshot before the first prod deploy (ADR 0006).
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
+    # Prod keeps a final snapshot when the stack is deleted or the instance replaced; dev data is
+    # disposable (ADR 0006). Both are CloudFormation attributes: changing them doesn't touch the DB.
+    DeletionPolicy: !If [IsProd, Snapshot, Delete]
+    UpdateReplacePolicy: !If [IsProd, Snapshot, Delete]
     Properties:
       # A fixed name means CloudFormation can't silently replace the instance on an update,
       # and `mise run db:stop` knows what to stop.
@@ -84,7 +87,9 @@ Resources:
       DBName: bonbon
       MasterUsername: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:username}}"
       MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:password}}"
-      BackupRetentionPeriod: 0
+      # Prod: daily backups and point-in-time restore for 7 days. Dev: none, which also makes
+      # create and delete faster. Switching between 0 and >0 briefly interrupts the database.
+      BackupRetentionPeriod: !If [IsProd, 7, 0]
       DeletionProtection: false
       EnablePerformanceInsights: false
       AutoMinorVersionUpgrade: true

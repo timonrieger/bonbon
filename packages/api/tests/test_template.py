@@ -81,6 +81,19 @@ def test_web_hosting_is_prod_only(template: dict[str, Any]) -> None:
         assert template["Outputs"][name].get("Condition") == "IsProd"
 
 
+def test_prod_database_survives_deletion(template: dict[str, Any]) -> None:
+    """Prod keeps a snapshot and backups (ADR 0006); dev stays disposable and cheap."""
+    database = template["Resources"]["Database"]
+    for policy in ("DeletionPolicy", "UpdateReplacePolicy"):
+        assert database[policy] == {"!If": ["IsProd", "Snapshot", "Delete"]}, policy
+    retention = database["Properties"]["BackupRetentionPeriod"]["!If"]
+    assert retention[0] == "IsProd"
+    assert retention[1] > 0
+    assert retention[2] == 0
+    # !If in DeletionPolicy only works with this transform, and it must run before SAM's.
+    assert template["Transform"][0] == "AWS::LanguageExtensions"
+
+
 @pytest.mark.parametrize(
     ("path", "serves_index"),
     [
