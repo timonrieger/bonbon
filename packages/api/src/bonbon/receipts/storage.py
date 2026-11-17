@@ -40,15 +40,16 @@ def parse_receipt_key(key: str) -> tuple[str, str]:
 
 @cache
 def _s3():
-    # Short timeouts: without a route to S3 (no gateway endpoint in the VPC) a call should fail
-    # within seconds, not hang until the Lambda times out. Presigning makes no calls.
+    # Every call must fail well within the workers' 30 s Lambda timeout, also without a route to
+    # S3 (no gateway endpoint in the VPC): at most 5 s connect + 10 s read = 15 s. No retries
+    # inside the invocation; SQS retries the whole message. Presigning makes no calls.
     return boto3.client(
         "s3",
         config=Config(
             signature_version="s3v4",
             connect_timeout=5,
             read_timeout=10,
-            retries={"mode": "standard", "max_attempts": 3},
+            retries={"mode": "standard", "max_attempts": 1},
         ),
     )
 
