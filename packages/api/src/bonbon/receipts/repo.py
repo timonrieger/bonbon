@@ -4,6 +4,7 @@ from uuid import UUID
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError, ServiceError
 
 from bonbon import db
+from bonbon.receipts.categories import DEFAULT_CATEGORY
 from bonbon.receipts.models import ReceiptCorrection, ReceiptItem, ReceiptSummary, month_bounds
 
 # The day a receipt counts towards: its purchase date, or else the day it was uploaded, in
@@ -149,7 +150,12 @@ def correct(household_id: str, receipt_id: str, correction: ReceiptCorrection) -
 
 
 def category_names() -> list[str]:
-    return [name for [name] in db.query("SELECT name FROM categories ORDER BY name")]
+    return [
+        name
+        for [name] in db.query(
+            "SELECT name FROM categories ORDER BY name = :last, name", last=DEFAULT_CATEGORY
+        )
+    ]
 
 
 def _summary(

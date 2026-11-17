@@ -115,7 +115,7 @@ def update_receipt(household_id: str, receipt_id: str, body: ReceiptCorrection) 
 
 @router.get("/categories", operation_id="listCategories", tags=["receipts"])
 def list_categories() -> CategoryList:
-    """All item categories, sorted by name; the same for every household."""
+    """All item categories, sorted by name with «Sonstiges» last; the same for every household."""
     # No household data, so no membership check; API Gateway still requires a signed-in user.
     return CategoryList(categories=repo.category_names())
 

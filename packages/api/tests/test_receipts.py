@@ -308,7 +308,8 @@ def test_non_member_cannot_correct(database: FakeDatabase, household_id: str) ->
     assert database.receipts[UUID(receipt_id)].store == "Migros"
 
 
-def test_categories_are_listed_by_name(database: FakeDatabase) -> None:
-    database.categories |= {"Milchprodukte", "Getränke"}
+def test_categories_are_listed_by_name_with_sonstiges_last(database: FakeDatabase) -> None:
+    database.categories |= {"Tiefkühl & Konserven", "Getränke"}
     status, body = api_request(handler, "GET", "/categories")
-    assert (status, body) == (200, {"categories": ["Getränke", "Milchprodukte", "Sonstiges"]})
+    expected = ["Getränke", "Tiefkühl & Konserven", "Sonstiges"]
+    assert (status, body) == (200, {"categories": expected})
