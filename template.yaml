@@ -14,13 +14,24 @@ Parameters:
     AllowedValues: [dev, prod]
     Default: dev
   # The database and the Lambdas that use it live in the account's default VPC.
-  # Looked up by .mise/tasks/stack-params.py.
+  # Looked up by .mise/tasks/stack-params.py, as are RouteTableIds and CreateS3Endpoint.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: The account's default VPC
   LambdaSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Default-VPC subnets for Lambdas and the database (without use1-az3, which Lambda doesn't support)
+  RouteTableIds:
+    Type: CommaDelimitedList
+    Description: Route tables of the default VPC, for the S3 gateway endpoint
+  # false if the VPC already has an S3 gateway endpoint from outside this stack (ADR 0007).
+  # A VPC can't have two for the same route table, and an existing one is never touched.
+  CreateS3Endpoint:
+    Type: String
+    AllowedValues: ["true", "false"]
+
+Conditions:
+  CreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, "true"]
 
 # Single source for the retry count: the ReceiptsQueue redrive policy and the Textract Lambda's
 # MAX_RECEIVE_COUNT read the same value, so "last attempt" in the code always matches the point
@@ -108,8 +119,23 @@ Resources:
         PasswordLength: 32
         ExcludePunctuation: true
 
+  # Lets VPC Lambdas (the database worker) read Textract results from S3 without NAT. Free.
+  # Default policy (full S3 access): the endpoint may be shared with other stacks in the VPC.
+  # Tagged so stack-params.py recognizes it as ours and keeps CreateS3Endpoint=true.
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateS3Endpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref RouteTableIds
+      Tags:
+        - Key: bonbon:stack
+          Value: !Ref AWS::StackName
+
   # Attached to every Lambda that runs in the VPC. Outbound stays open: without a NAT gateway
-  # the only reachable targets are the database (and later the S3 gateway endpoint).
+  # the only reachable targets are the database and S3 (through the gateway endpoint).
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -149,6 +175,13 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: api
+      # Stage-wide, for all users together (docs/features/04-households.md). Per-user limits are
+      # in the app, e.g. failed join attempts (join_attempts).
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 25
+          ThrottlingBurstLimit: 50
       Cors:
         AllowOrigin: "'*'"
         AllowHeaders: "'Authorization,Content-Type'"
@@ -219,6 +252,18 @@ Resources:
             RestApiId: !Ref Api
             Path: /households/{household_id}/members
             Method: GET
+        CreateInvite:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/invites
+            Method: POST
+        JoinHousehold:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/join
+            Method: POST
 
   ReceiptsFunction:
     Type: AWS::Serverless::Function
