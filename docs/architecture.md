@@ -69,11 +69,11 @@ PostgreSQL on RDS, database `bonbon`, schema in [`packages/api/src/bonbon/migrat
 | `users` | `user_id` (Cognito `sub`) | display_name (token `name`, or the e-mail prefix for accounts without one), email | implemented |
 | `households` | `id` uuid | name, created_at | implemented |
 | `memberships` | (`household_id`, `user_id`) | role `owner`/`member`; index on `user_id`; at most one owner per household; a user with memberships can't be deleted | implemented |
-| `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | schema only |
+| `invite_codes` | `code_hash` | household, `expires_at`, `used_at` | implemented |
 | `receipts` | `id` uuid | uploaded_by, status `uploaded`/`done`/`failed`/`duplicate`, file_hash, store, purchase_date, total_rappen; `file_hash` unique per household except for duplicates and failed receipts; index (`household_id`, `purchase_date`). The S3 key is derived from household and receipt id, the raw Textract result stays in S3 | read by the API; written by the worker later |
 | `receipt_items` | (`receipt_id`, `position`) | name, quantity, unit and line amount, category (required) | read by the API; written by the worker later |
 | `categories`, `category_rules` | `id` | keyword → category; `Sonstiges` exists for items no rule matches | `categories` read by the API; rules schema only |
-| `join_attempts` | `id` | rate limit for joining | schema only |
+| `join_attempts` | `id` | rate limit for joining | implemented |
 | `schema_migrations` | `version` | applied migration files | implemented |
 
 Deleting a household cascades to memberships, invite codes and receipts; deleting a receipt cascades to its items. Deleting a user sets `receipts.uploaded_by` to NULL and removes their join attempts; their memberships have to be gone first (account deletion leaves all households). Monthly totals are computed with `GROUP BY` at query time, nothing is pre-aggregated.

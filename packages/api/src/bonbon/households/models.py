@@ -30,3 +30,14 @@ class Member(BaseModel):
 
 class MemberList(BaseModel):
     members: list[Member]
+
+
+class InviteCode(BaseModel):
+    # Shown once: only its hash is stored. Formatted as XXXX-XXXX; joining ignores case,
+    # dashes and spaces.
+    code: str = Field(examples=["K7QM-X3PD"])
+    expires_at: datetime
+
+
+class JoinRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=20, examples=["K7QM-X3PD"])

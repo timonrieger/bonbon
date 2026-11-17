@@ -149,6 +149,13 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: api
+      # Stage-wide, for all users together (docs/features/04-households.md). Per-user limits are
+      # in the app, e.g. failed join attempts (join_attempts).
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 25
+          ThrottlingBurstLimit: 50
       Cors:
         AllowOrigin: "'*'"
         AllowHeaders: "'Authorization,Content-Type'"
@@ -219,6 +226,18 @@ Resources:
             RestApiId: !Ref Api
             Path: /households/{household_id}/members
             Method: GET
+        CreateInvite:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/invites
+            Method: POST
+        JoinHousehold:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/join
+            Method: POST
 
   ReceiptsFunction:
     Type: AWS::Serverless::Function
