@@ -22,6 +22,14 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
     Description: Default-VPC subnets for Lambdas and the database (without use1-az3, which Lambda doesn't support)
 
+# Single source for the retry count: the ReceiptsQueue redrive policy and the Textract Lambda's
+# MAX_RECEIVE_COUNT read the same value, so "last attempt" in the code always matches the point
+# at which SQS moves the message to the DLQ.
+Mappings:
+  Worker:
+    Receipts:
+      MaxReceiveCount: 3
+
 Globals:
   Function:
     Runtime: python3.14
@@ -356,7 +364,7 @@ Resources:
       VisibilityTimeout: 180
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt ReceiptsDeadLetterQueue.Arn
-        maxReceiveCount: 3
+        maxReceiveCount: !FindInMap [Worker, Receipts, MaxReceiveCount]
 
   ReceiptsDeadLetterQueue:
     Type: AWS::SQS::Queue
@@ -409,6 +417,12 @@ Resources:
       Timeout: 30
       # Keeps Textract below its rate limit (5 calls/s); SQS buffers the rest.
       ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          RESULTS_QUEUE_URL: !Ref ResultsQueue
+          # Same value as the queue's maxReceiveCount, so the last-attempt failure message is
+          # sent on the delivery that SQS would otherwise drop to the DLQ.
+          MAX_RECEIVE_COUNT: !FindInMap [Worker, Receipts, MaxReceiveCount]
       Events:
         ReceiptUploaded:
           Type: SQS

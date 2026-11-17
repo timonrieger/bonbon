@@ -36,6 +36,16 @@ def parse_receipt_key(key: str) -> tuple[str, str]:
     raise ValueError(f"Not a receipt key: {key}")
 
 
+def read_object(key: str) -> bytes:
+    """Return the bytes of an object in the receipts bucket (used by the Textract Lambda)."""
+    return _s3().get_object(Bucket=bucket_name(), Key=key)["Body"].read()
+
+
+def put_json(key: str, data: bytes) -> None:
+    """Store a JSON object in the receipts bucket (the raw Textract result)."""
+    _s3().put_object(Bucket=bucket_name(), Key=key, Body=data, ContentType="application/json")
+
+
 @cache
 def _s3():
     return boto3.client("s3", config=Config(signature_version="s3v4"))

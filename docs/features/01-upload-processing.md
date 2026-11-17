@@ -10,8 +10,8 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - [ ] Upload a single-page PDF (optional; the API accepts `application/pdf`, the UI doesn't yet)
 - [ ] Frontend shrinks images to ~300–500 KB before upload
 - [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
-- [ ] PDFs with more than one page are rejected
-- [ ] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); both queues and Lambdas exist, the Lambdas only log so far
+- [ ] PDFs with more than one page are rejected (synchronous `AnalyzeExpense` only accepts single-page documents; a multi-page PDF raises and the receipt ends up `failed`)
+- [ ] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); the Textract Lambda extracts and sends a result (#41), the database Lambda still only logs (#38)
 - [ ] Status visible in the app: in Bearbeitung (`uploaded`) / fertig / fehlgeschlagen / Duplikat
 - [ ] Notification on completion, in-app (required) or e-mail via SNS (optional)
 - [x] Failed receipts land in the dead-letter queue after 3 attempts (both queues, partial batch failures)
@@ -50,14 +50,13 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 **Implemented**:
 - S3 bucket with lifecycle rules, CORS, and object-created → SQS notification (`template.yaml`)
-- Receipts queue + DLQ → `handlers/process_receipt.py` (skeleton: parses the S3 key and logs)
+- Receipts queue + DLQ → `handlers/process_receipt.py`: calls Textract `AnalyzeExpense`, stores the raw JSON under `textract-results/`, sends an `ExtractedResult`/`FailedResult` on the results queue (#41)
 - Results queue + DLQ → `handlers/process_result.py` in the VPC (skeleton: logs the message) (#17)
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
 
 **Planned**:
-- Textract Lambda: Textract call, raw JSON to `textract-results/`, S3 key to the results queue, remove the `status=pending` tag
-- Database Lambda: idempotent status write, duplicate detection via file hash, items to PostgreSQL
+- Database Lambda: reads the raw JSON, idempotent status write, duplicate detection via file hash, items to PostgreSQL, removes the `status=pending` tag (#38)
 - Textract mock mode for the load test
 
 ## Notes
