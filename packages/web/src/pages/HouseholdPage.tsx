@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { type ContentType, createReceipt, getHousehold } from '@/api';
+import { type ContentType, createReceipt, getHousehold, listMembers } from '@/api';
 import { uploadToS3 } from '@/api/receipts';
 import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
 
@@ -11,6 +11,11 @@ export function HouseholdPage() {
   const household = useQuery({
     queryKey: ['household', householdId],
     queryFn: () => getHousehold({ householdId })
+  });
+  const members = useQuery({
+    queryKey: ['householdMembers', householdId],
+    queryFn: () => listMembers({ householdId }),
+    enabled: household.isSuccess
   });
 
   const [file, setFile] = useState<File | null>(null);
@@ -50,6 +55,32 @@ export function HouseholdPage() {
           Zum Dashboard
         </Link>
       </div>
+
+      <section aria-labelledby="members-heading">
+        <h2 id="members-heading" className="mb-3 text-lg font-medium">
+          Mitglieder
+        </h2>
+
+        {members.isPending && <p className="text-sm text-gray-600">Mitglieder werden geladen…</p>}
+        {members.isError && (
+          <p role="alert" className="text-sm text-red-600">
+            {members.error.message}
+          </p>
+        )}
+        {members.isSuccess && members.data.members.length === 0 && (
+          <p className="text-sm text-gray-600">Keine Mitglieder gefunden.</p>
+        )}
+        {members.isSuccess && members.data.members.length > 0 && (
+          <ul className="divide-y divide-gray-200 rounded border border-gray-200">
+            {members.data.members.map((member) => (
+              <li key={member.user_id} className="flex justify-between gap-4 px-3 py-2 text-sm">
+                <span>{member.display_name}</span>
+                <span className="text-gray-600">{member.role}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section aria-labelledby="upload-heading">
         <h2 id="upload-heading" className="mb-3 text-lg font-medium">
