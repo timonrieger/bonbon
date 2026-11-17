@@ -47,12 +47,13 @@ run = [{ task = "//packages/api:openapi" }, { task = "//packages/web:client" }]
 description = "Regenerate openapi.json and the frontend API client from the Python routes"
 
 # --parameter-overrides replaces the one in samconfig.toml, so Stage is repeated here.
-# stack-params.py looks up the default VPC of the current account (nothing hard-coded).
+# stack-params.py looks up the default VPC of the current account (nothing hard-coded). It takes
+# the stack name to tell the stack's own S3 endpoint from one that already existed (ADR 0007).
 [tasks."stack:plan"]
 depends = ["//packages/api:requirements"]
 run = [
   "sam build --cached --parallel",
-  "sam deploy --config-env dev --no-execute-changeset --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\"",
+  "sam deploy --config-env dev --no-execute-changeset --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\"",
 ]
 description = "Show what stack:up would change in 'bonbon-dev' (changeset), without deploying"
 
@@ -60,7 +61,7 @@ description = "Show what stack:up would change in 'bonbon-dev' (changeset), with
 depends = ["//packages/api:requirements"]
 run = [
   "sam build --cached --parallel",
-  "sam deploy --config-env dev --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\"",
+  "sam deploy --config-env dev --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\"",
   { task = "env" },
   { task = "db:migrate" },
 ]
@@ -81,7 +82,7 @@ description = "Start your stopped dev database (takes a few minutes)"
 
 [tasks.sync]
 depends = ["//packages/api:requirements"]
-run = "sam sync --config-env dev --watch --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py)\""
+run = "sam sync --config-env dev --watch --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\""
 raw = true
 description = "Watch for changes and push them to your dev stack within seconds"
 
@@ -94,6 +95,6 @@ depends = ["//packages/api:requirements"]
 confirm = "Deploy to PROD (stack bonbon-prod in the current AWS account)?"
 run = [
   "sam build --cached --parallel",
-  "sam deploy --config-env prod --parameter-overrides \"Stage=prod $(.mise/tasks/stack-params.py)\"",
+  "sam deploy --config-env prod --parameter-overrides \"Stage=prod $(.mise/tasks/stack-params.py bonbon-prod)\"",
 ]
 description = "Deploy the production stack. Only the infra owner runs this, from main"
