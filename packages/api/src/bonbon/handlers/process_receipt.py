@@ -49,11 +49,12 @@ PERMANENT_ERRORS = frozenset(
 
 # The Lambda has a 30 s timeout. boto3's defaults (60 s read + several retries) could outlast
 # it, so Lambda would kill the invocation before the except block runs: on the last attempt no
-# FailedResult would be sent and the receipt would stay 'uploaded' forever. These caps bound the
-# worst case well under 30 s ((5 + 15) x 2 attempts + backoff) so every failure surfaces as an
-# exception we can handle. Same idea as the S3 client in the database worker (#38).
+# FailedResult would be sent and the receipt would stay 'uploaded' forever. SQS already retries
+# the whole message up to MaxReceiveCount, so we don't retry inside the invocation: one attempt
+# caps the worst case at 5 + 15 = 20 s, leaving ~10 s to send the FailedResult. Same idea as the
+# S3 client in the database worker (#38).
 _CLIENT_CONFIG = Config(
-    connect_timeout=5, read_timeout=15, retries={"max_attempts": 2, "mode": "standard"}
+    connect_timeout=5, read_timeout=15, retries={"max_attempts": 1, "mode": "standard"}
 )
 
 
