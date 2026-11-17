@@ -23,7 +23,9 @@ from bonbon.receipts.expense import parse_expense
 from bonbon.receipts.results import ExtractedResult, parse_result_message
 
 logger = Logger()
-processor = BatchProcessor(event_type=EventType.SQS)
+# With BatchSize 1 a single failed record is the whole batch; report it as a batch item failure
+# (SQS retries it) instead of raising out of the handler. Same as the Textract worker.
+processor = BatchProcessor(event_type=EventType.SQS, raise_on_entire_batch_failure=False)
 
 
 def process_record(record: SQSRecord) -> None:

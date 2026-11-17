@@ -101,6 +101,9 @@ def finish_extracted(
     of the same file processed at the same time collide on the file-hash index; the loser rolls
     back, and its retry finds the other receipt and becomes 'duplicate'.
     """
+    # Before the transaction: categorize() may load its rules from the database, and a query
+    # that reconnects in the middle of an open transaction would lose it.
+    categories = [categorize(item.name) for item in receipt.items]
     with db.transaction() as conn:
         status = _lock_uploaded(conn, household_id, receipt_id)
         if status != "uploaded":
@@ -128,7 +131,9 @@ def finish_extracted(
             receipt_id=receipt_id,
         )
         if outcome == "done":
-            for position, item in enumerate(receipt.items, start=1):
+            for position, (item, category) in enumerate(
+                zip(receipt.items, categories, strict=True), start=1
+            ):
                 # A category name that doesn't exist fails the NOT NULL on category_id, so a
                 # wrong rule shows up as an error instead of a silently dropped item.
                 conn.run(
@@ -143,7 +148,7 @@ def finish_extracted(
                     quantity=item.quantity,
                     unit_price=item.unit_price_rappen,
                     amount=item.amount_rappen,
-                    category=categorize(item.name),
+                    category=category,
                 )
         return outcome
 

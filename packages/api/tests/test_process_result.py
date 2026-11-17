@@ -6,10 +6,9 @@ from uuid import UUID
 
 import boto3
 import pytest
-from aws_lambda_powertools.utilities.batch.exceptions import BatchProcessingError
 from bonbon.handlers.process_result import handler
 from bonbon.receipts.results import ExtractedResult, FailedResult
-from bonbon.receipts.storage import PENDING_TAG, bucket_name, receipt_key
+from bonbon.receipts.storage import PENDING_TAG, bucket_name, receipt_key, result_key
 from conftest import LambdaContext
 from fakes import FakeDatabase
 
@@ -58,20 +57,18 @@ def upload(database: FakeDatabase, s3: Any, household_id: UUID, **fields: Any) -
         Tagging=PENDING_TAG,
     )
     s3.put_object(
-        Bucket=bucket_name(), Key=result_key(household_id, receipt_id), Body=json.dumps(MIGROS)
+        Bucket=bucket_name(),
+        Key=result_key(str(household_id), str(receipt_id)),
+        Body=json.dumps(MIGROS),
     )
     return receipt_id
-
-
-def result_key(household_id: UUID, receipt_id: UUID) -> str:
-    return f"textract-results/{household_id}/{receipt_id}.json"
 
 
 def extracted(household_id: UUID, receipt_id: UUID, file_hash: str = HASH) -> str:
     return ExtractedResult(
         household_id=household_id,
         receipt_id=receipt_id,
-        result_key=result_key(household_id, receipt_id),
+        result_key=result_key(str(household_id), str(receipt_id)),
         file_hash=file_hash,
     ).model_dump_json()
 
@@ -190,19 +187,19 @@ def test_receipt_of_another_household_is_not_touched(
     ],
 )
 def test_invalid_message_is_retried(body: str) -> None:
-    # With every record of the batch failed, the invocation fails and SQS retries the message.
-    with pytest.raises(BatchProcessingError):
-        invoke(body)
+    # Reported as a batch item failure: SQS retries it and moves it to the DLQ after 3 attempts.
+    assert invoke(body) == {"batchItemFailures": [{"itemIdentifier": "msg-0"}]}
 
 
 def test_missing_textract_result_is_retried(
     database: FakeDatabase, s3: Any, household_id: UUID
 ) -> None:
     receipt_id = upload(database, s3, household_id)
-    s3.delete_object(Bucket=bucket_name(), Key=result_key(household_id, receipt_id))
+    s3.delete_object(Bucket=bucket_name(), Key=result_key(str(household_id), str(receipt_id)))
 
-    with pytest.raises(BatchProcessingError):
-        invoke(extracted(household_id, receipt_id))
+    result = invoke(extracted(household_id, receipt_id))
+
+    assert result == {"batchItemFailures": [{"itemIdentifier": "msg-0"}]}
     assert database.receipts[receipt_id].status == "uploaded"
 
 
