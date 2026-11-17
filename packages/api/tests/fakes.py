@@ -12,10 +12,16 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from aws_lambda_powertools.event_handler.exceptions import NotFoundError
+from aws_lambda_powertools.event_handler.exceptions import NotFoundError, ServiceError
 from bonbon.auth import Role
 from bonbon.households.models import Household, Member
-from bonbon.receipts.models import ReceiptItem, ReceiptStatus, ReceiptSummary, month_bounds
+from bonbon.receipts.models import (
+    ReceiptCorrection,
+    ReceiptItem,
+    ReceiptStatus,
+    ReceiptSummary,
+    month_bounds,
+)
 from bonbon.reports.models import (
     CategoryTotal,
     MonthlyReport,
@@ -50,6 +56,8 @@ class FakeDatabase:
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
         self.receipts: dict[UUID, FakeReceipt] = {}
+        # Migration 0002 adds 'Sonstiges'; tests add more.
+        self.categories: set[str] = {"Sonstiges"}
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -133,6 +141,33 @@ class FakeDatabase:
         if r is None or r.household_id != UUID(household_id):
             raise NotFoundError("Receipt not found")
         return self._summary(UUID(receipt_id), r), r.items
+
+    def correct_receipt(
+        self, household_id: str, receipt_id: str, correction: ReceiptCorrection
+    ) -> None:
+        self.get_receipt(household_id, receipt_id)  # 404 like the real one
+        r = self.receipts[UUID(receipt_id)]
+        if r.status != "done":
+            raise ServiceError(409, "Only processed receipts can be corrected")
+        given = correction.model_fields_set
+        if correction.items is not None:
+            unknown = sorted({i.category for i in correction.items} - self.categories)
+            if unknown:
+                raise ServiceError(422, f"Unknown category: {', '.join(unknown)}")
+        if "store" in given:
+            r.store = correction.store
+        if "purchase_date" in given:
+            r.purchase_date = correction.purchase_date
+        if "total_rappen" in given:
+            r.total_rappen = correction.total_rappen
+        if correction.items is not None:
+            r.items = sorted(
+                (ReceiptItem(**item.model_dump()) for item in correction.items),
+                key=lambda item: item.position,
+            )
+
+    def category_names(self) -> list[str]:
+        return sorted(self.categories)
 
     def _summary(self, receipt_id: UUID, r: FakeReceipt) -> ReceiptSummary:
         same = (r.store, r.purchase_date, r.total_rappen)

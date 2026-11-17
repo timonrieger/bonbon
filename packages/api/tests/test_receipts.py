@@ -175,3 +175,140 @@ def test_rejects_malformed_month(household_id: str, month: str) -> None:
         handler, "GET", f"/households/{household_id}/receipts", query={"month": month}
     )
     assert status == 422
+
+
+MILK: dict[str, Any] = {
+    "position": 1,
+    "name": "Milch",
+    "quantity": 1.0,
+    "unit_price_rappen": 165,
+    "amount_rappen": 165,
+    "category": "Sonstiges",
+}
+
+
+def correct(household_id: str, receipt_id: str, user: str = "user-1", **body: Any) -> Any:
+    return api_request(
+        handler,
+        "PATCH",
+        f"/households/{household_id}/receipts/{receipt_id}",
+        user=user,
+        body=body,
+    )
+
+
+def test_any_member_corrects_header_and_items(database: FakeDatabase, household_id: str) -> None:
+    database.sync_user("user-2", "User 2", None)
+    database.add_member(UUID(household_id), "user-2")
+    database.categories.add("Milchprodukte")
+    receipt_id = add_receipt(database, household_id, store="MIGROS", total_rappen=None)
+    cumulus = {**MILK, "position": 2, "name": "Cumulus-Bon", "amount_rappen": -1000}
+
+    status, body = correct(
+        household_id,
+        receipt_id,
+        user="user-2",
+        store="Migros",
+        purchase_date="2026-11-06",
+        total_rappen=18570,
+        items=[cumulus, {**MILK, "category": "Milchprodukte"}],
+    )
+
+    assert status == 200
+    assert (body["store"], body["purchase_date"], body["total_rappen"]) == (
+        "Migros",
+        "2026-11-06",
+        18570,
+    )
+    assert [(i["position"], i["category"]) for i in body["items"]] == [
+        (1, "Milchprodukte"),
+        (2, "Sonstiges"),
+    ]
+    assert "X-Amz-Signature" in body["image_url"]
+
+
+def test_fields_left_out_stay_and_null_clears(database: FakeDatabase, household_id: str) -> None:
+    item = ReceiptItem(**MILK)
+    receipt_id = add_receipt(database, household_id, purchase_date=date(2026, 11, 6), items=[item])
+
+    status, body = correct(household_id, receipt_id, purchase_date=None)
+
+    assert status == 200
+    assert (body["store"], body["purchase_date"], body["total_rappen"]) == ("Migros", None, 1000)
+    assert body["items"] == [item.model_dump()]
+
+
+def test_empty_item_list_removes_all_items(database: FakeDatabase, household_id: str) -> None:
+    receipt_id = add_receipt(database, household_id, items=[ReceiptItem(**MILK)])
+    status, body = correct(household_id, receipt_id, items=[])
+    assert (status, body["items"]) == (200, [])
+
+
+@pytest.mark.parametrize("receipt_status", ["uploaded", "failed", "duplicate"])
+def test_only_done_receipts_can_be_corrected(
+    database: FakeDatabase, household_id: str, receipt_status: str
+) -> None:
+    receipt_id = add_receipt(database, household_id, status=receipt_status)
+    status, _ = correct(household_id, receipt_id, store="Coop")
+    assert status == 409
+    assert database.receipts[UUID(receipt_id)].store == "Migros"
+
+
+def test_unknown_category_is_rejected_and_nothing_changes(
+    database: FakeDatabase, household_id: str
+) -> None:
+    receipt_id = add_receipt(database, household_id)
+    status, body = correct(
+        household_id, receipt_id, store="Coop", items=[{**MILK, "category": "Erfunden"}]
+    )
+    assert status == 422
+    assert "Erfunden" in body["message"]
+    assert database.receipts[UUID(receipt_id)].store == "Migros"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"store": "   "},
+        {"total_rappen": 100_000_001},
+        {"purchase_date": "06.11.2026"},
+        {"items": [{**MILK, "name": ""}]},
+        {"items": [{**MILK, "quantity": 0}]},
+        {"items": [{**MILK, "position": 0}]},
+        {"items": [{**MILK, "category": ""}]},
+        {"items": [MILK, MILK]},
+    ],
+)
+def test_rejects_invalid_correction(database: FakeDatabase, household_id: str, body: dict) -> None:
+    receipt_id = add_receipt(database, household_id)
+    status, _ = correct(household_id, receipt_id, **body)
+    assert status == 422
+
+
+@pytest.mark.parametrize("receipt_id", [RECEIPT_ID, "not-a-uuid"])
+def test_correcting_unknown_receipt_is_404(household_id: str, receipt_id: str) -> None:
+    status, _ = correct(household_id, receipt_id, store="Coop")
+    assert status == 404
+
+
+def test_correcting_another_households_receipt_is_404(
+    database: FakeDatabase, household_id: str
+) -> None:
+    _, other = api_request(households, "POST", "/households", body={"name": "Andere WG"})
+    receipt_id = add_receipt(database, other["id"])
+    status, _ = correct(household_id, receipt_id, store="Coop")
+    assert status == 404
+    assert database.receipts[UUID(receipt_id)].store == "Migros"
+
+
+def test_non_member_cannot_correct(database: FakeDatabase, household_id: str) -> None:
+    receipt_id = add_receipt(database, household_id)
+    status, _ = correct(household_id, receipt_id, user="stranger", store="Coop")
+    assert status == 404
+    assert database.receipts[UUID(receipt_id)].store == "Migros"
+
+
+def test_categories_are_listed_by_name(database: FakeDatabase) -> None:
+    database.categories |= {"Milchprodukte", "Getränke"}
+    status, body = api_request(handler, "GET", "/categories")
+    assert (status, body) == (200, {"categories": ["Getränke", "Milchprodukte", "Sonstiges"]})

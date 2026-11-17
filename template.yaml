@@ -247,6 +247,18 @@ Resources:
             RestApiId: !Ref Api
             Path: /households/{household_id}/receipts/{receipt_id}
             Method: GET
+        UpdateReceipt:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/receipts/{receipt_id}
+            Method: PATCH
+        ListCategories:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /categories
+            Method: GET
 
   ReportsFunction:
     Type: AWS::Serverless::Function

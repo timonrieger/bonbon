@@ -7,7 +7,7 @@
 - [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
 - [ ] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [ ] Every item gets a category from the keyword rule table; no match → "Sonstiges"
-- [ ] Manual correction of items, prices and categories (optional: categories only)
+- [ ] Manual correction of items, prices and categories (optional: categories only); API done (#26), UI wiring open
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
 
@@ -33,32 +33,31 @@
     PATCH body live in the component file
 - `src/api/receipts.ts`: added the `formatRappen` helper
 
-**Blocked on backend — needed for full integration:**
+**Backend ready** (#26): `GET /households/{id}/receipts/{id}` returns the generated
+`ReceiptDetail` the form takes (#18); items stay empty until the worker writes them (#22).
 
-1. ~~`GET /households/{id}/receipts/{id}` must return real data~~: done (#18). It returns
-   the generated `ReceiptDetail` type the form takes; items stay empty until the worker writes them.
-2. A `PATCH /households/{id}/receipts/{id}` endpoint is needed to save corrections.
-   The request body type is not yet designed. Suggested shape (coordinate with @Dam-Mil):
-   ```json
-   {
-     "store": "string | null",
-     "purchase_date": "YYYY-MM-DD | null",
-     "items": [
-       { "position": 1, "name": "…", "quantity": 1.0,
-         "unit_price_rappen": 150, "amount_rappen": 150, "category": "…" }
-     ]
-   }
-   ```
-3. Available categories as an API list (`GET /categories` or inline in `ReceiptDetail`)
-   would let the category field become a `<select>` instead of a free-text input.
-   Currently only `'Sonstiges'` exists in the database.
+**To wire up:**
 
-**To wire up once PATCH is deployed:**
-
-1. Run `mise run generate` — replace `ReceiptCorrection` with the generated PATCH request type
+1. Replace the `ReceiptCorrection` stand-in in the component with the generated
+   `ReceiptCorrection` from `@/api`. Same shape, plus an optional `total_rappen`.
 2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
-   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
-3. Remove the `disabled` from the save button
+   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(updateReceipt)`; the
+   response is the corrected `ReceiptDetail`, so it can go straight into the query cache.
+3. Category field as a `<select>` from `useQuery(listCategories)`.
+4. Remove the `disabled` from the save button.
+5. Allow negative amounts (discounts, vouchers), the API accepts them.
+
+### API (#26)
+
+| Route | Frontend function | What it does |
+|---|---|---|
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Fields left out stay, `null` clears them; `items` replaces all items. Returns the corrected `ReceiptDetail` |
+| `GET /categories` | `listCategories` | All category names, sorted; the same for every household |
+
+- 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
+- Item names and categories are trimmed and must not be empty; quantity > 0 (three decimals kept); positions unique; amounts may be negative.
+- The total is never computed from the items: vouchers are often not line items (see Notes).
+- One transaction; the reports sum at query time, so the dashboard shows the correction immediately.
 
 ## Rules
 
