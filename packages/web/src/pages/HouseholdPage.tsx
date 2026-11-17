@@ -1,7 +1,14 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { type ContentType, createReceipt, getHousehold, listMembers } from '@/api';
+import {
+  type ContentType,
+  createInvite,
+  createReceipt,
+  getHousehold,
+  type InviteCode,
+  listMembers
+} from '@/api';
 import { uploadToS3 } from '@/api/receipts';
 import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
 
@@ -80,6 +87,8 @@ export function HouseholdPage() {
             ))}
           </ul>
         )}
+
+        <InviteCodeSection key={householdId} householdId={householdId} />
       </section>
 
       <section aria-labelledby="upload-heading">
@@ -112,6 +121,91 @@ export function HouseholdPage() {
           </p>
         )}
       </section>
+    </div>
+  );
+}
+
+function InviteCodeSection({ householdId }: { householdId: string }) {
+  const [copyStatus, setCopyStatus] = useState<{
+    invite: InviteCode;
+    status: 'copied' | 'error';
+  } | null>(null);
+  const inviteMutation = useMutation({
+    mutationFn: () => createInvite({ householdId }),
+    onMutate: () => setCopyStatus(null)
+  });
+  const invite = inviteMutation.data;
+  const displayedCopyStatus =
+    invite && copyStatus && copyStatus.invite === invite ? copyStatus.status : null;
+
+  async function copyInviteCode() {
+    if (!invite) return;
+
+    try {
+      await navigator.clipboard.writeText(invite.code);
+      setCopyStatus({ invite, status: 'copied' });
+    } catch {
+      setCopyStatus({ invite, status: 'error' });
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={() => inviteMutation.mutate()}
+        disabled={inviteMutation.isPending}
+        className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
+      >
+        {inviteMutation.isPending ? 'Wird erstellt…' : 'Einladungscode erstellen'}
+      </button>
+
+      {inviteMutation.isError && (
+        <p role="alert" className="mt-2 text-sm text-red-600">
+          Einladungscode konnte nicht erstellt werden: {inviteMutation.error.message}
+        </p>
+      )}
+
+      {invite && (
+        <div className="mt-3 rounded border border-gray-200 p-3">
+          <p className="text-sm font-medium">Einladungscode</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code className="select-all rounded bg-gray-100 px-2 py-1 font-mono">
+              {invite.code}
+            </code>
+            <button
+              type="button"
+              onClick={copyInviteCode}
+              className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-100"
+            >
+              Code kopieren
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-gray-600">
+            Gültig bis{' '}
+            <time dateTime={invite.expires_at}>
+              {new Intl.DateTimeFormat('de-CH', {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+              }).format(new Date(invite.expires_at))}
+            </time>
+          </p>
+          <p className="mt-2 text-sm text-gray-600">
+            Der Code kann nur einmal eingelöst werden und wird nur direkt nach dem Erstellen
+            angezeigt. Speichere ihn jetzt.
+          </p>
+          {displayedCopyStatus === 'copied' && (
+            <p role="status" className="mt-2 text-sm text-green-700">
+              Einladungscode kopiert.
+            </p>
+          )}
+          {displayedCopyStatus === 'error' && (
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              Kopieren nicht möglich. Bitte markiere den Code und kopiere ihn manuell.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
