@@ -51,19 +51,19 @@ The core of the architecture: the upload ends in S3, everything after runs async
 **Implemented**:
 - S3 bucket with lifecycle rules, CORS, and object-created → SQS notification (`template.yaml`)
 - Receipts queue + DLQ → `handlers/process_receipt.py` (skeleton: parses the S3 key and logs)
-- Results queue + DLQ → `handlers/process_result.py` in the VPC (skeleton: logs the message) (#17)
+- Results queue + DLQ → `handlers/process_result.py` in the VPC (#17, #22): reads the Textract result from S3, writes receipt and items in one transaction (`done`, `duplicate` via file hash, or `failed`), removes the `status=pending` tag. Message format in `bonbon/receipts/results.py`
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
 
 **Planned**:
-- Textract Lambda: Textract call, raw JSON to `textract-results/`, S3 key to the results queue, remove the `status=pending` tag
-- Database Lambda: idempotent status write, duplicate detection via file hash, items to PostgreSQL
+- Textract Lambda (#21): Textract call, raw JSON to `textract-results/`, `ExtractedResult` or `FailedResult` to the results queue
+- S3 gateway endpoint for the database Lambda (#27)
 - Textract mock mode for the load test
 
 ## Notes
 
 - The receipt id is created when the presigned URL is issued and is part of the S3 key. `POST /households/{household_id}/receipts` returns `receipt_id`, `upload_url`, `upload_headers` and `expires_in` (300 s). The browser sends a `PUT` to `upload_url` with every header from `upload_headers` and the file as body. Type, size and tag are signed into the URL, so S3 rejects anything else.
-- Every upload is tagged `status=pending` via `upload_headers`. The worker must remove the tag once the receipt is processed, otherwise the lifecycle rule deletes the file after 7 days.
+- Every upload is tagged `status=pending` via `upload_headers`. The database worker removes the tag once the receipt has a final status (`done`, `duplicate` or `failed`), otherwise the lifecycle rule deletes the file after 7 days. A failed or duplicate receipt keeps its file too, so the app can still show it.
 - S3 lifecycle: Glacier Instant Retrieval after 30 days, delete never-processed uploads (tag `status=pending`) after 7 days, delete raw Textract results (`textract-results/`) after 30 days, abort incomplete multipart uploads after 1 day.
 - The worker sets `duplicate` only for the same file hash in the household. A failed receipt doesn't count: uploading the same file again processes it normally. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
 - A Textract mock mode (realistic delay and rate limit) is needed for the load test.

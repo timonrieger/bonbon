@@ -45,6 +45,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(receipts, "create", fake.create_receipt)
     monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)
     monkeypatch.setattr(receipts, "get", fake.get_receipt)
+    monkeypatch.setattr(receipts, "finish_extracted", fake.finish_extracted)
+    monkeypatch.setattr(receipts, "finish_failed", fake.finish_failed)
     monkeypatch.setattr(reports, "monthly", fake.monthly_report)
     monkeypatch.setattr(reports, "trend", fake.spending_trend)
     monkeypatch.setattr(users, "sync", fake.sync_user)
