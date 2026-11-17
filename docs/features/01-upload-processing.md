@@ -11,13 +11,13 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - [ ] Frontend shrinks images to ~300–500 KB before upload
 - [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
 - [ ] PDFs with more than one page are rejected (synchronous `AnalyzeExpense` only accepts single-page documents; a multi-page PDF raises and the receipt ends up `failed`)
-- [ ] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); both Lambdas are implemented (#41, #38); end-to-end on AWS still needs the S3 gateway endpoint (#27)
+- [x] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); tested end to end on a dev stack (#41, #38, #27)
 - [ ] Status visible in the app: in Bearbeitung (`uploaded`) / fertig / fehlgeschlagen / Duplikat
 - [ ] Notification on completion, in-app (required) or e-mail via SNS (optional)
 - [x] Failed receipts land in the dead-letter queue after 3 attempts (both queues, partial batch failures)
-- [ ] Worker is idempotent (one transaction from `uploaded` to the final status; a duplicate delivery changes nothing)
-- [ ] A receipt that fails for good is set to `failed`, not only dead-lettered
-- [ ] Same file uploaded twice in a household is detected via file hash → `duplicate`
+- [x] Worker is idempotent (one transaction from `uploaded` to the final status; a duplicate delivery changes nothing)
+- [x] A receipt that fails for good is set to `failed`, not only dead-lettered
+- [x] Same file uploaded twice in a household is detected via file hash → `duplicate`
 - [x] Worker reserved concurrency 10; visibility timeout ≥ 6 × Lambda timeout
 
 ## Implementation status
@@ -54,9 +54,9 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - Results queue + DLQ → `handlers/process_result.py` in the VPC (#17, #22): reads the Textract result from S3, writes receipt and items in one transaction (`done`, `duplicate` via file hash, or `failed`), removes the `status=pending` tag. Message format in `bonbon/receipts/results.py`
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
+- S3 gateway endpoint so the database Lambda reaches S3 without NAT, created only if the default VPC has none (#27)
 
 **Planned**:
-- S3 gateway endpoint for the database Lambda (#27)
 - Textract mock mode for the load test
 
 ## Notes

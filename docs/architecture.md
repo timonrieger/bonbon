@@ -36,13 +36,13 @@ flowchart LR
 | Households API (list, create, get, members) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
-| SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
-| Worker split: results queue + DLQ, DB Lambda inside the VPC ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda only logs) | @timonrieger, @Dam-Mil |
-| Worker split: Textract Lambda sends to the results queue ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned | @timonrieger, @Dam-Mil |
-| S3 gateway endpoint for the DB Lambda, created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda doesn't read S3 yet) | @timonrieger |
-| Worker logic: Textract, categorization, status | planned | @Dam-Mil |
+| SQS + DLQ, worker Lambda | implemented (Textract Lambda, #41) | @timonrieger, @Dam-Mil |
+| Worker split: results queue + DLQ, DB Lambda inside the VPC ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#22) | @timonrieger, @Dam-Mil |
+| Worker split: Textract Lambda sends to the results queue ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#41) | @timonrieger, @Dam-Mil |
+| S3 gateway endpoint for the DB Lambda, created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#27) | @timonrieger |
+| Worker logic: Textract, categorization, status | implemented (#41, #23, #22); rules still to tune (#24) | @Dam-Mil |
 | Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
-| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |
+| Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | implemented | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
 | S3 + CloudFront hosting | planned (prod stack only) | @timonrieger |
@@ -59,7 +59,7 @@ Update the status column when something lands.
 5. SNS notifies the user (from outside the VPC). The frontend polls the status.
 6. After 3 failed attempts a message goes to the dead-letter queue of its queue.
 
-Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials.md)). The queues and both Lambdas exist. The database Lambda is implemented (#22); the Textract Lambda still only logs, so nothing sends to the results queue yet (#21), and the database Lambda needs the S3 gateway endpoint (#27).
+Steps 3 and 4 are stage 2 ([0007](decisions/0007-worker-split-and-db-credentials.md)), implemented in #41 (Textract Lambda), #22 (database Lambda) and #27 (S3 gateway endpoint) and tested end to end on a dev stack with a real receipt (`done`, then the same file again → `duplicate`).
 
 ## Data model
 

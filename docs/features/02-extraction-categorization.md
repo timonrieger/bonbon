@@ -4,7 +4,7 @@
 
 ## Done when
 
-- [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
+- [x] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense; accuracy is checked with the test set below)
 - [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
 - [ ] Manual correction of items, prices and categories (optional: categories only)
