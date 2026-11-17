@@ -42,7 +42,6 @@ Globals:
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
 
-
 Resources:
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
   # Private, reachable only from LambdaSecurityGroup. The Learner Lab allows Single-AZ only,

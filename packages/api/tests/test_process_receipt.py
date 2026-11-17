@@ -111,6 +111,19 @@ def test_ignores_s3_test_event() -> None:
     assert result == {"batchItemFailures": []}
 
 
+def test_clients_use_the_bounded_config() -> None:
+    """boto3's 60 s default could outlast the 30 s Lambda, killing the invocation before the
+    except block sends a FailedResult; both clients must be built with the bounded config."""
+    process_receipt._textract.cache_clear()
+    process_receipt._sqs.cache_clear()
+    with patch.object(process_receipt.boto3, "client") as make_client:
+        process_receipt._textract()
+        process_receipt._sqs()
+    calls = {c.args[0]: c.kwargs.get("config") for c in make_client.call_args_list}
+    assert calls["textract"] is process_receipt._CLIENT_CONFIG
+    assert calls["sqs"] is process_receipt._CLIENT_CONFIG
+
+
 def test_transient_error_retries_before_last_attempt() -> None:
     key = receipt_key(HOUSEHOLD, RECEIPT)
     _, queue_url = seed_bucket_and_queue(b"x", key)

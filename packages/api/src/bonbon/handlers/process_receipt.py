@@ -31,6 +31,7 @@ from aws_lambda_powertools.utilities.batch.types import PartialItemFailureRespon
 from aws_lambda_powertools.utilities.data_classes import S3Event
 from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
 from aws_lambda_powertools.utilities.typing import LambdaContext
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from bonbon.receipts import storage
@@ -46,21 +47,30 @@ PERMANENT_ERRORS = frozenset(
     {"UnsupportedDocumentException", "BadDocumentException", "InvalidS3ObjectException"}
 )
 
+# The Lambda has a 30 s timeout. boto3's defaults (60 s read + several retries) could outlast
+# it, so Lambda would kill the invocation before the except block runs: on the last attempt no
+# FailedResult would be sent and the receipt would stay 'uploaded' forever. These caps bound the
+# worst case well under 30 s ((5 + 15) x 2 attempts + backoff) so every failure surfaces as an
+# exception we can handle. Same idea as the S3 client in the database worker (#38).
+_CLIENT_CONFIG = Config(
+    connect_timeout=5, read_timeout=15, retries={"max_attempts": 2, "mode": "standard"}
+)
+
+
+@cache
+def _textract():
+    return boto3.client("textract", config=_CLIENT_CONFIG)
+
+
+@cache
+def _sqs():
+    return boto3.client("sqs", config=_CLIENT_CONFIG)
+
 
 def _max_receive_count() -> int:
     # Same value as the ReceiptsQueue redrive policy (template Mappings), so "last attempt"
     # here is the delivery on which SQS would otherwise move the message to the DLQ.
     return int(os.environ["MAX_RECEIVE_COUNT"])
-
-
-@cache
-def _textract():
-    return boto3.client("textract")
-
-
-@cache
-def _sqs():
-    return boto3.client("sqs")
 
 
 def _send(message: ExtractedResult | FailedResult) -> None:
