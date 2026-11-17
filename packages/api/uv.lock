@@ -48,6 +48,7 @@ dev = [
     { name = "boto3" },
     { name = "moto" },
     { name = "pytest" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -62,6 +63,7 @@ dev = [
     { name = "boto3", specifier = ">=1.43.114" },
     { name = "moto", specifier = ">=5.2.4" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]

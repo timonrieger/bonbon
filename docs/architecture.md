@@ -6,7 +6,7 @@ Serverless and event-driven on AWS (Learner Lab, `us-east-1`). The full reasonin
 
 ```mermaid
 flowchart LR
-  web[React SPA<br/>S3 + CloudFront] -->|JWT| api[API Gateway REST<br/>Cognito authorizer]
+  web[React SPA<br/>Amplify Hosting] -->|JWT| api[API Gateway REST<br/>Cognito authorizer]
   web -->|login| cognito[Cognito User Pool]
   web -->|presigned PUT| s3[(S3 receipts bucket)]
   s3 -->|ObjectCreated| sqs[SQS + DLQ]
@@ -45,7 +45,7 @@ flowchart LR
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
 | Account deletion queue + worker | planned | @Dam-Mil |
-| S3 + CloudFront hosting: private web bucket, origin access control, `WebUrl` output (`mise run deploy:web`) | scaffolded (prod stack only) | @timonrieger |
+| Frontend hosting on Amplify Hosting, `WebUrl` output, `mise run deploy:web` ([0008](decisions/0008-frontend-on-amplify-hosting.md): CloudFront is blocked in the Learner Lab) | implemented (prod stack only) | @timonrieger |
 | CloudWatch alarms + dashboard | planned | @schmid277 |
 
 Update the status column when something lands.
@@ -85,8 +85,8 @@ Deleting a household cascades to memberships, invite codes and receipts; deletin
 - Every Lambda additionally checks household membership in the database (`require_membership`), so leaving a household takes effect immediately.
 - Non-members get 404, not 403, so household ids can't be probed.
 - Receipts live in a private, encrypted bucket and are reachable only via short-lived presigned URLs.
-- CORS (API Gateway, the Lambdas' own headers via `ALLOWED_ORIGIN`, the receipts bucket) allows only the app's origin: the CloudFront URL on prod, `http://localhost:5173` on dev stacks.
-- The web app's bucket is private as well; only the CloudFront distribution can read it (origin access control, a bucket policy instead of IAM).
+- CORS (API Gateway, the Lambdas' own headers via `ALLOWED_ORIGIN`, the receipts bucket) allows only the app's origin: the Amplify URL on prod, `http://localhost:5173` on dev stacks.
+- The web app is served over HTTPS from Amplify's own storage, so no bucket is public; HTTP redirects to HTTPS.
 - Cognito needs no app URLs: the frontend signs in with SRP through Amplify, not the hosted UI, so there are no callback or logout URLs to register.
 - The database is private (no public access), in the default VPC, and accepts port 5432 only from the Lambda security group. Connections use TLS with certificate verification.
 - API and worker Lambdas connect as `bonbon_app` (data only, no schema changes); only the migration Lambda has the master user.
@@ -98,6 +98,6 @@ Deleting a household cascades to memberships, invite codes and receipts; deletin
 | Stack | Account | Deployed by | How |
 |---|---|---|---|
 | `bonbon-dev` | each person's own Learner Lab | that person | `mise run dev` / `mise run stack:up` |
-| `bonbon-prod` | @timonrieger's Learner Lab | @timonrieger | `mise run deploy:prod`, then `mise run deploy:web` (frontend to S3 + CloudFront), from `main` |
+| `bonbon-prod` | @timonrieger's Learner Lab | @timonrieger | `mise run deploy:prod`, then `mise run deploy:web` (frontend to Amplify Hosting), from `main` |
 
 See [decisions/0004](decisions/0004-per-person-cloud-dev-stacks.md).
