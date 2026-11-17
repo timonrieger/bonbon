@@ -6,7 +6,7 @@
 
 - [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
 - [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
-- [ ] Every item gets a category from the keyword rule table; no match → "Sonstiges"
+- [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
 - [ ] Manual correction of items, prices and categories (optional: categories only)
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
@@ -51,7 +51,7 @@
    ```
 3. Available categories as an API list (`GET /categories` or inline in `ReceiptDetail`)
    would let the category field become a `<select>` instead of a free-text input.
-   Currently only `'Sonstiges'` exists in the database.
+   The fixed category list and keyword rules are seeded by migration 0006 (#42).
 
 **To wire up once PATCH is deployed:**
 
@@ -69,9 +69,16 @@
 - Total: the first `TOTAL` in CHF, else `AMOUNT_PAID`. Totals in another currency (Migros prints «Total in EUR») are skipped by Textract's `Currency` code or the label. Never summed up from the items.
 - Amounts in Rappen, also `CHF 12.50`, `12,50`, `1'234.50` and deductions as `-1.20` or `20.00-`.
 - Items: name from `ITEM`, else the last line of `EXPENSE_ROW`; `PRICE` is the line amount, `UNIT_PRICE` stays as printed (per kg for weighed goods, before the reduction for reduced items); quantity 1 if missing. Rows without a price are left out.
-- Category: `bonbon/receipts/categories.py` gives every item «Sonstiges» until the rule table (#23) replaces `categorize()`.
+- Category: `categorize()` from `bonbon/receipts/categories.py` (#42), called before the transaction because it loads its rules from the database once per container.
 
-**Planned**: Textract call in the Textract Lambda (#21), keyword rules (#23).
+**Implemented** (@Dam-Mil):
+- Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
+- Categorization: fixed category list + keyword rules seeded in migration 0006, and
+  `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
+  (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
+
+**Planned**:
+- Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
 ## Rules
 
