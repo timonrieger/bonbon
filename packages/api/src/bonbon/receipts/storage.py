@@ -19,6 +19,15 @@ def receipt_key(household_id: str, receipt_id: str) -> str:
     return f"households/{household_id}/receipts/{receipt_id}"
 
 
+def result_key(household_id: str, receipt_id: str) -> str:
+    """Where the Textract Lambda stores the raw AnalyzeExpense JSON of a receipt.
+
+    Outside households/, so storing it doesn't trigger the bucket notification again; the
+    lifecycle rule deletes everything under textract-results/ after 30 days.
+    """
+    return f"textract-results/{household_id}/{receipt_id}.json"
+
+
 def parse_receipt_key(key: str) -> tuple[str, str]:
     """Return (household_id, receipt_id) from a key built by receipt_key()."""
     match key.split("/"):
