@@ -17,7 +17,7 @@ class ExtractedResult(BaseModel):
     outcome: Literal["extracted"] = "extracted"
     household_id: UUID
     receipt_id: UUID
-    # textract-results/<household_id>/<receipt_id>.json in the receipts bucket.
+    # storage.result_key(household_id, receipt_id) in the receipts bucket.
     result_key: str = Field(pattern=r"^textract-results/")
     # SHA-256 of the original file, lowercase hex. Same hash in the household → 'duplicate'.
     file_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
