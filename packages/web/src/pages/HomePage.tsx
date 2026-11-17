@@ -1,12 +1,33 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
+import { HttpError } from '@oazapfts/runtime';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { createHousehold, listHouseholds } from '@/api';
+import { createHousehold, joinHousehold, listHouseholds } from '@/api';
+
+function joinErrorMessage(error: Error) {
+  if (!(error instanceof HttpError)) {
+    return 'Beitreten war nicht möglich. Bitte versuche es erneut.';
+  }
+
+  switch (error.status) {
+    case 404:
+      return 'Der Code ist ungültig, abgelaufen oder wurde bereits verwendet.';
+    case 409:
+      return 'Du bist bereits Mitglied dieses Haushalts.';
+    case 422:
+      return 'Die Eingabe ist ungültig. Bitte prüfe den Einladungscode.';
+    case 429:
+      return 'Zu viele Versuche. Bitte probiere es später erneut.';
+    default:
+      return 'Beitreten war nicht möglich. Bitte versuche es erneut.';
+  }
+}
 
 export function HomePage() {
   const { user } = useAuthenticator((context) => [context.user]);
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const householdsQueryKey = ['households', user?.userId] as const;
@@ -18,6 +39,15 @@ export function HomePage() {
   const create = useMutation({
     mutationFn: (householdName: string) =>
       createHousehold({ createHouseholdRequest: { name: householdName } }),
+    onSuccess: (household) => {
+      const invalidation = queryClient.invalidateQueries({ queryKey: householdsQueryKey });
+      navigate(`/households/${household.id}`);
+      return invalidation;
+    }
+  });
+  const join = useMutation({
+    mutationFn: (inviteCode: string) => joinHousehold({ joinRequest: { code: inviteCode } }),
+    retry: false,
     onSuccess: (household) => {
       const invalidation = queryClient.invalidateQueries({ queryKey: householdsQueryKey });
       navigate(`/households/${household.id}`);
@@ -56,6 +86,43 @@ export function HomePage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-labelledby="join-household-heading">
+        <h2 id="join-household-heading" className="mb-3 text-lg font-medium">
+          Haushalt beitreten
+        </h2>
+        <form
+          className="flex flex-col gap-2 sm:flex-row sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            join.mutate(code);
+          }}
+        >
+          <div className="flex-1">
+            <label htmlFor="invite-code" className="mb-1 block text-sm">
+              Einladungscode
+            </label>
+            <input
+              id="invite-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="w-full rounded border px-3 py-2"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={join.isPending || code.trim() === ''}
+            className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+          >
+            {join.isPending ? 'Wird beigetreten…' : 'Beitreten'}
+          </button>
+          {join.isError && (
+            <p role="alert" className="text-sm text-red-600">
+              {joinErrorMessage(join.error)}
+            </p>
+          )}
+        </form>
       </section>
 
       <section aria-labelledby="create-household-heading">
