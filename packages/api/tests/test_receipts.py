@@ -96,15 +96,21 @@ def test_list_filters_by_month(database: FakeDatabase, household_id: str) -> Non
 def test_list_leaves_out_uploads_whose_file_never_arrived(
     database: FakeDatabase, household_id: str
 ) -> None:
-    fresh = add_receipt(database, household_id, status="uploaded")
+    # Still within the 18 minutes the pipeline may take with all retries.
+    in_pipeline = add_receipt(
+        database,
+        household_id,
+        status="uploaded",
+        created_at=datetime.now(UTC) - timedelta(minutes=29),
+    )
     add_receipt(
         database,
         household_id,
         status="uploaded",
-        created_at=datetime.now(UTC) - timedelta(minutes=16),
+        created_at=datetime.now(UTC) - timedelta(minutes=31),
     )
     _, body = list_receipts(household_id)
-    assert [r["id"] for r in body["receipts"]] == [fresh]
+    assert [r["id"] for r in body["receipts"]] == [in_pipeline]
 
 
 def test_list_flags_same_store_date_and_total(database: FakeDatabase, household_id: str) -> None:

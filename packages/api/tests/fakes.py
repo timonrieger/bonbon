@@ -111,7 +111,7 @@ class FakeDatabase:
         return str(self.add_receipt(UUID(household_id), uploaded_by))
 
     def list_receipts(self, household_id: str, month: str | None) -> list[ReceiptSummary]:
-        abandoned_before = datetime.now(UTC) - timedelta(minutes=15)
+        abandoned_before = datetime.now(UTC) - timedelta(minutes=30)
         start, end = month_bounds(month) if month else (date.min, date.max)
         found = [
             (receipt_id, r)

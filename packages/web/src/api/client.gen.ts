@@ -319,7 +319,6 @@ export enum Role {
 }
 export enum Status {
     Uploaded = "uploaded",
-    Processing = "processing",
     Done = "done",
     Failed = "failed",
     Duplicate = "duplicate"
