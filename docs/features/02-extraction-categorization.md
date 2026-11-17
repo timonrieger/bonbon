@@ -6,7 +6,7 @@
 
 - [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
 - [ ] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
-- [ ] Every item gets a category from the keyword rule table; no match → "Sonstiges"
+- [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
 - [ ] Manual correction of items, prices and categories (optional: categories only)
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
@@ -51,7 +51,7 @@
    ```
 3. Available categories as an API list (`GET /categories` or inline in `ReceiptDetail`)
    would let the category field become a `<select>` instead of a free-text input.
-   Currently only `'Sonstiges'` exists in the database.
+   The fixed category list and keyword rules are seeded by migration 0006 (#42).
 
 **To wire up once PATCH is deployed:**
 
@@ -59,6 +59,18 @@
 2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
    data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
 3. Remove the `disabled` from the save button
+
+### Backend (`packages/api`) — @Dam-Mil
+
+**Implemented**:
+- Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
+- Categorization: fixed category list + keyword rules seeded in migration 0006, and
+  `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
+  (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
+
+**Planned**:
+- Database Lambda writes items with their category via `categorize()` (#38)
+- Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
 ## Rules
 

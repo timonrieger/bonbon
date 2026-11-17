@@ -50,8 +50,10 @@ FROM (VALUES
     ('käse',         'Milchprodukte & Eier'),
     ('butter',       'Milchprodukte & Eier'),
     ('quark',        'Milchprodukte & Eier'),
-    ('ei ',          'Milchprodukte & Eier'),
+    ('gruyère',      'Milchprodukte & Eier'),
+    ('crème',        'Milchprodukte & Eier'),
     ('eier',         'Milchprodukte & Eier'),
+    ('freiland ei',  'Milchprodukte & Eier'),
     -- Brot & Backwaren
     ('brot',         'Brot & Backwaren'),
     ('brötchen',     'Brot & Backwaren'),
@@ -72,6 +74,8 @@ FROM (VALUES
     ('lachs',        'Fleisch & Fisch'),
     ('fisch',        'Fleisch & Fisch'),
     ('thon',         'Fleisch & Fisch'),
+    ('salami',       'Fleisch & Fisch'),
+    ('salametti',    'Fleisch & Fisch'),
     -- Getränke
     ('wasser',       'Getränke'),
     ('mineral',      'Getränke'),
@@ -86,10 +90,14 @@ FROM (VALUES
     -- Süsswaren & Snacks
     ('schokolade',   'Süsswaren & Snacks'),
     ('schoggi',      'Süsswaren & Snacks'),
+    ('schoko',       'Süsswaren & Snacks'),
+    ('chocolat',     'Süsswaren & Snacks'),
     ('guetzli',      'Süsswaren & Snacks'),
+    ('keks',         'Süsswaren & Snacks'),
     ('chips',        'Süsswaren & Snacks'),
     ('bonbon',       'Süsswaren & Snacks'),
     ('biscuit',      'Süsswaren & Snacks'),
+    ('lebkuchen',    'Süsswaren & Snacks'),
     ('glace',        'Süsswaren & Snacks'),
     -- Tiefkühl & Konserven
     ('pizza',        'Tiefkühl & Konserven'),
@@ -105,6 +113,7 @@ FROM (VALUES
     ('teigwaren',    'Grundnahrungsmittel'),
     ('pasta',        'Grundnahrungsmittel'),
     ('spaghetti',    'Grundnahrungsmittel'),
+    ('hörnli',       'Grundnahrungsmittel'),
     ('öl',           'Grundnahrungsmittel'),
     ('essig',        'Grundnahrungsmittel'),
     ('müesli',       'Grundnahrungsmittel'),
@@ -115,6 +124,7 @@ FROM (VALUES
     ('haushaltpapier', 'Haushalt & Reinigung'),
     ('müllsack',     'Haushalt & Reinigung'),
     ('reiniger',     'Haushalt & Reinigung'),
+    ('teelicht',     'Haushalt & Reinigung'),
     -- Körperpflege & Gesundheit
     ('shampoo',      'Körperpflege & Gesundheit'),
     ('seife',        'Körperpflege & Gesundheit'),

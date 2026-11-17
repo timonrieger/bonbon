@@ -1,21 +1,26 @@
 import re
-from pathlib import Path
 
 import pytest
 from bonbon.handlers.migrate import migration_files
 from bonbon.receipts import categories
 
-# A small rule set that mirrors the shape of migration 0006, longest keyword first (as _rules()
-# returns it), so the tests don't depend on the real database.
-RULES = sorted(
-    [
-        ("vollmilch", "Milchprodukte & Eier"),
-        ("milch", "Milchprodukte & Eier"),
-        ("apfel", "Früchte & Gemüse"),
-        ("brot", "Brot & Backwaren"),
-    ],
-    key=lambda kv: -len(kv[0]),
-)
+# A small rule set that mirrors the shape of migration 0006, so the tests don't depend on the
+# real database. The order is irrelevant: categorize() picks the match ending furthest right.
+RULES = [
+    ("apfel", "Früchte & Gemüse"),
+    ("erdbeer", "Früchte & Gemüse"),
+    ("paprika", "Früchte & Gemüse"),
+    ("milch", "Milchprodukte & Eier"),
+    ("vollmilch", "Milchprodukte & Eier"),
+    ("joghurt", "Milchprodukte & Eier"),
+    ("brot", "Brot & Backwaren"),
+    ("saft", "Getränke"),
+    ("cola", "Getränke"),
+    ("tee", "Getränke"),
+    ("chips", "Süsswaren & Snacks"),
+    ("chocolat", "Süsswaren & Snacks"),
+    ("teelicht", "Haushalt & Reinigung"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -34,9 +39,27 @@ def test_matching_is_case_insensitive() -> None:
     assert categories.categorize("MILCH DRINK") == "Milchprodukte & Eier"
 
 
-def test_longer_keyword_wins_over_shorter_one() -> None:
-    # Both 'vollmilch' and 'milch' match; the more specific rule must win.
+def test_rightmost_match_wins_for_german_compounds() -> None:
+    # The head noun of a compound is the last part, so the match ending furthest right wins:
+    # a juice/yoghurt/snack, not a fruit.
+    assert categories.categorize("Apfelsaft") == "Getränke"
+    assert categories.categorize("Orangensaft") == "Getränke"
+    assert categories.categorize("Kartoffelchips") == "Süsswaren & Snacks"
+    assert categories.categorize("Paprika Wave Chips") == "Süsswaren & Snacks"
+    assert categories.categorize("Erdbeerjoghurt") == "Milchprodukte & Eier"
+    assert categories.categorize("Migros Erdbeer-Milch") == "Milchprodukte & Eier"
+
+
+def test_longer_keyword_wins_on_a_tie() -> None:
+    # 'vollmilch' and 'milch' end at the same position; the longer keyword breaks the tie.
     assert categories.categorize("Vollmilch UHT") == "Milchprodukte & Eier"
+
+
+def test_short_keyword_does_not_hijack_a_longer_word() -> None:
+    # 'cola' is inside 'Chocolat' and 'tee' inside 'Teelichter', but a more specific keyword
+    # ends further right and wins.
+    assert categories.categorize("Chocolat Frey") == "Süsswaren & Snacks"
+    assert categories.categorize("Teelichter 50 Stk") == "Haushalt & Reinigung"
 
 
 def test_no_match_falls_back_to_sonstiges() -> None:
@@ -46,8 +69,8 @@ def test_no_match_falls_back_to_sonstiges() -> None:
 
 def test_default_category_is_seeded() -> None:
     """categorize() returns 'Sonstiges' for no match; migration 0002 must create that row."""
-    seed = (Path(migration_files()[1])).read_text()
-    assert "INSERT INTO categories (name) VALUES ('Sonstiges')" in seed
+    [path] = [p for p in migration_files() if p.name.startswith("0002")]
+    assert "INSERT INTO categories (name) VALUES ('Sonstiges')" in path.read_text()
 
 
 # --- Migration 0006 consistency (no database needed) -------------------------------------------
