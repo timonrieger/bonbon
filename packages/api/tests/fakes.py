@@ -55,6 +55,8 @@ class FakeDatabase:
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
         self.receipts: dict[UUID, FakeReceipt] = {}
+        # (keyword, category) like category_rules; empty: every item is 'Sonstiges'
+        self.category_rules: list[tuple[str, str]] = []
 
     # bonbon.auth
     def role_in_household(self, household_id: UUID, user_id: str) -> Role | None:
@@ -99,6 +101,10 @@ class FakeDatabase:
             if h == UUID(household_id)
         ]
         return sorted(members, key=lambda m: (m.role != "owner", m.joined_at, m.display_name))
+
+    # bonbon.receipts.categories
+    def rules(self) -> list[tuple[str, str]]:
+        return self.category_rules
 
     # bonbon.users.repo
     def sync_user(self, user_id: str, display_name: str, email: str | None) -> None:

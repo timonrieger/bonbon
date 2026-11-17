@@ -81,6 +81,7 @@ def tags(s3: Any, household_id: UUID, receipt_id: UUID) -> list:
 def test_extracted_receipt_is_done_with_items_and_keeps_its_file(
     database: FakeDatabase, s3: Any, household_id: UUID
 ) -> None:
+    database.category_rules = [("joghurt", "Milchprodukte & Eier"), ("chips", "Snacks")]
     receipt_id = upload(database, s3, household_id)
 
     assert invoke(extracted(household_id, receipt_id)) == {"batchItemFailures": []}
@@ -90,7 +91,10 @@ def test_extracted_receipt_is_done_with_items_and_keeps_its_file(
     assert receipt.purchase_date is None
     assert receipt.file_hash == HASH
     assert len(receipt.items) == 43
-    assert {item.category for item in receipt.items} == {"Sonstiges"}
+    categorized = {item.name: item.category for item in receipt.items}
+    assert categorized["MClass Joghurt Mokka"] == "Milchprodukte & Eier"
+    assert categorized["Paprika Wave Chips"] == "Snacks"
+    assert categorized["Bananen"] == "Sonstiges"
     assert tags(s3, household_id, receipt_id) == []
 
 
