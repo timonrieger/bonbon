@@ -23,7 +23,7 @@
 - The owner can't leave without handing over the role first: the API answers `409`. The role passes automatically only on account deletion ([05](05-account-deletion.md)).
 - An owner who is the only member can leave: that deletes the household.
 - Only the owner can remove other members and hand over the role. Everyone can leave.
-- Leaving, removing and handing over lock the household row, so parallel requests can't leave a household without members or without an owner.
+- Leaving, removing and handing over lock the household row, so parallel requests can't leave a household without members or without an owner. Joining and creating an invite also lock the household (`FOR KEY SHARE`) before any invite code, the same order as leaving, so a join can't deadlock with the last member leaving.
 
 ## API
 
@@ -34,7 +34,7 @@
   - 429: 5 failed attempts within the last hour, checked before the code.
 - `leaveHousehold` `DELETE /households/{household_id}/members/me` → 204.
   - 404: not a member. 409: the owner, while other members remain.
-  - The last member leaving deletes the household. Memberships, invite codes, receipts and items go with it (`ON DELETE CASCADE`); then the Lambda deletes `households/<id>/` and `textract-results/<id>/` from S3 through the gateway endpoint. That part is best effort: if S3 fails, the request still succeeds and the error is logged.
+  - The last member leaving deletes the household. Memberships, invite codes, receipts and items go with it (`ON DELETE CASCADE`); then the Lambda deletes `households/<id>/` and `textract-results/<id>/` from S3 through the gateway endpoint. That part is best effort: if S3 fails, the request still succeeds and the error is logged. Objects that `delete_objects` refuses individually (HTTP 200 with `Errors`) are logged by key and not counted as deleted.
 - `removeMember` `DELETE /households/{household_id}/members/{user_id}` → 204.
   - 403: the caller isn't the owner. 404: the user isn't a member. The caller's own id works like `leaveHousehold` (incl. 409).
 - `transferOwnership` `PUT /households/{household_id}/owner` `{user_id}` → 200 the members with their new roles (like `listMembers`).

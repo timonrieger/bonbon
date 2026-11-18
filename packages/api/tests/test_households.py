@@ -8,6 +8,7 @@ import boto3
 import pytest
 from bonbon.handlers.households import handler
 from bonbon.households import codes
+from bonbon.receipts import storage
 from conftest import api_request
 from fakes import FakeDatabase
 
@@ -303,6 +304,29 @@ def test_household_is_deleted_even_if_s3_fails(database: FakeDatabase) -> None:
 
     assert leave(household_id, "user-1") == 204
     assert UUID(household_id) not in database.households
+
+
+def test_partial_s3_failure_counts_only_deleted_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    # delete_objects answers 200 and lists the objects it couldn't delete under Errors.
+    s3 = receipts_bucket()
+    household_id = household_of()
+    refused = f"households/{household_id}/receipts/{uuid4()}"
+    for key in (refused, f"households/{household_id}/receipts/{uuid4()}"):
+        s3.put_object(Bucket=os.environ["RECEIPTS_BUCKET"], Key=key, Body=b"x")
+    client = storage._s3_cleanup()
+    real_delete = client.delete_objects
+
+    def delete_objects(**kwargs: Any) -> Any:
+        objects = kwargs["Delete"]["Objects"]
+        kwargs["Delete"]["Objects"] = [o for o in objects if o["Key"] != refused]
+        response = real_delete(**kwargs)
+        response["Errors"] = [{"Key": refused, "Code": "AccessDenied"}]
+        return response
+
+    monkeypatch.setattr(client, "delete_objects", delete_objects)
+
+    assert storage.delete_household_files(household_id) == (1, [refused])
+    assert keys(s3) == [refused]
 
 
 def test_owner_removes_member(database: FakeDatabase) -> None:

@@ -68,6 +68,9 @@ def create_invite(household_id: str) -> InviteCode:
     """A new single-use invite code, valid for 48 h. Only its hash is stored."""
     code = codes.generate()
     with db.transaction() as conn:
+        # Household before invite codes, like join() and remove_member(), so this can't
+        # deadlock with the last member leaving.
+        conn.run("SELECT 1 FROM households WHERE id = :id FOR KEY SHARE", id=UUID(household_id))
         # Codes that can't be used any more are only clutter; nothing reads them.
         conn.run(
             "DELETE FROM invite_codes WHERE household_id = :household_id"
@@ -107,6 +110,15 @@ def join(code: str, user_id: str) -> Household:
         )
         if failed >= MAX_FAILED_JOINS:
             raise ServiceError(429, "Too many failed attempts, try again later")
+        # Household before invite, the lock order of remove_member (whose household delete
+        # cascades to the invite codes); the opposite order could deadlock with the last member
+        # leaving. KEY SHARE doesn't block other joins. If the household is gone, so is the code.
+        conn.run(
+            "SELECT 1 FROM households WHERE id ="
+            " (SELECT household_id FROM invite_codes WHERE code_hash = :code_hash)"
+            " FOR KEY SHARE",
+            code_hash=codes.code_hash(code),
+        )
         # FOR UPDATE: of two people using the same code at once, the second one waits and then
         # finds it used.
         rows = conn.run(

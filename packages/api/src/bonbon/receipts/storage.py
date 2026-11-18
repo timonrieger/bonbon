@@ -53,8 +53,11 @@ def household_prefixes(household_id: str) -> tuple[str, str]:
     return f"households/{household_id}/", f"textract-results/{household_id}/"
 
 
-def delete_household_files(household_id: str) -> int:
-    """Delete all files of a household from the bucket and return how many there were.
+def delete_household_files(household_id: str) -> tuple[int, list[str]]:
+    """Delete all files of a household from the bucket.
+
+    Returns how many were deleted and the keys S3 refused to delete: delete_objects answers
+    200 even when single objects fail and lists them under Errors.
 
     Called by the households Lambda (inside the VPC, through the S3 gateway endpoint) after the
     household is gone from the database. Short timeouts, so an unreachable S3 fails the cleanup
@@ -62,6 +65,7 @@ def delete_household_files(household_id: str) -> int:
     """
     s3 = _s3_cleanup()
     deleted = 0
+    failed: list[str] = []
     for prefix in household_prefixes(household_id):
         for page in s3.get_paginator("list_objects_v2").paginate(
             Bucket=bucket_name(), Prefix=prefix
@@ -69,9 +73,14 @@ def delete_household_files(household_id: str) -> int:
             # A page has at most 1000 keys, which is also the limit of one delete_objects call.
             keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
             if keys:
-                s3.delete_objects(Bucket=bucket_name(), Delete={"Objects": keys, "Quiet": True})
-                deleted += len(keys)
-    return deleted
+                # Quiet: the response lists only the failures.
+                response = s3.delete_objects(
+                    Bucket=bucket_name(), Delete={"Objects": keys, "Quiet": True}
+                )
+                errors = [error["Key"] for error in response.get("Errors", [])]
+                failed += errors
+                deleted += len(keys) - len(errors)
+    return deleted, failed
 
 
 @cache

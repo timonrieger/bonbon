@@ -168,10 +168,18 @@ def _remove(household_id: str, user_id: str, *, removed_by: str) -> None:
     # succeeded either way. Leftover files are unreachable (no receipt points to them) and
     # logged as ERROR, so they can be removed by hand.
     try:
-        deleted = storage.delete_household_files(household_id)
+        deleted, failed = storage.delete_household_files(household_id)
     except BotoCoreError, ClientError:
         logger.exception(
             "Deleting the files of a deleted household failed", household_id=household_id
+        )
+        return
+    if failed:
+        logger.error(
+            "Some files of a deleted household could not be deleted",
+            household_id=household_id,
+            files=deleted,
+            failed=failed,
         )
     else:
         logger.info(
