@@ -1,0 +1,2772 @@
+{
+ "DocumentMetadata": {
+  "Pages": 1
+ },
+ "ExpenseDocuments": [
+  {
+   "ExpenseIndex": 1,
+   "SummaryFields": [
+    {
+     "Type": {
+      "Text": "NAME",
+      "Confidence": 99.41421508789062
+     },
+     "ValueDetection": {
+      "Text": "MIGROS",
+      "Confidence": 99.14598083496094
+     },
+     "PageNumber": 1,
+     "GroupProperties": [
+      {
+       "Types": [
+        "VENDOR"
+       ],
+       "Id": "6c0a3122-2714-4fba-9085-a4f581c0e434"
+      }
+     ]
+    },
+    {
+     "Type": {
+      "Text": "AMOUNT_PAID",
+      "Confidence": 99.43462371826172
+     },
+     "LabelDetection": {
+      "Text": "Mastercard",
+      "Confidence": 99.42788696289062
+     },
+     "ValueDetection": {
+      "Text": "185.70",
+      "Confidence": 99.4247817993164
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "DISCOUNT",
+      "Confidence": 75.42535400390625
+     },
+     "LabelDetection": {
+      "Text": "Bonus-Coupon 2x",
+      "Confidence": 74.8619384765625
+     },
+     "ValueDetection": {
+      "Text": "431.40",
+      "Confidence": 70.18856811523438
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "SUBTOTAL",
+      "Confidence": 99.9052734375
+     },
+     "LabelDetection": {
+      "Text": "Zwischentotal",
+      "Confidence": 99.87256622314453
+     },
+     "ValueDetection": {
+      "Text": "215.70",
+      "Confidence": 99.8570785522461
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "SUBTOTAL",
+      "Confidence": 82.0181884765625
+     },
+     "LabelDetection": {
+      "Text": "Sie sparen total",
+      "Confidence": 81.926025390625
+     },
+     "ValueDetection": {
+      "Text": "12.40",
+      "Confidence": 81.9794692993164
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "TOTAL",
+      "Confidence": 98.89620208740234
+     },
+     "LabelDetection": {
+      "Text": "Total CHF",
+      "Confidence": 98.89427185058594
+     },
+     "ValueDetection": {
+      "Text": "185.70",
+      "Confidence": 98.88922882080078
+     },
+     "PageNumber": 1,
+     "Currency": {
+      "Code": "CHF"
+     }
+    },
+    {
+     "Type": {
+      "Text": "TOTAL",
+      "Confidence": 89.09514617919922
+     },
+     "LabelDetection": {
+      "Text": "Total in EUR",
+      "Confidence": 89.04586791992188
+     },
+     "ValueDetection": {
+      "Text": "206.33",
+      "Confidence": 88.97779083251953
+     },
+     "PageNumber": 1,
+     "Currency": {
+      "Code": "EUR"
+     }
+    },
+    {
+     "Type": {
+      "Text": "VENDOR_NAME",
+      "Confidence": 99.41421508789062
+     },
+     "ValueDetection": {
+      "Text": "MIGROS",
+      "Confidence": 99.14598083496094
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "VENDOR_PHONE",
+      "Confidence": 99.65726470947266
+     },
+     "LabelDetection": {
+      "Text": "Tel.",
+      "Confidence": 99.34587097167969
+     },
+     "ValueDetection": {
+      "Text": "058 712 82 00",
+      "Confidence": 97.92188262939453
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "OTHER",
+      "Confidence": 76.93580627441406
+     },
+     "LabelDetection": {
+      "Text": "Cumulus-Bons",
+      "Confidence": 77.05720520019531
+     },
+     "ValueDetection": {
+      "Text": "CUMULUS BON 20.\n-\n20.00- 9",
+      "Confidence": 62.81734085083008
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "OTHER",
+      "Confidence": 98.189697265625
+     },
+     "LabelDetection": {
+      "Text": "CUMULUS BON 20.\n-",
+      "Confidence": 72.351318359375
+     },
+     "ValueDetection": {
+      "Text": "20.00- 9",
+      "Confidence": 97.89988708496094
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "OTHER",
+      "Confidence": 99.41102600097656
+     },
+     "LabelDetection": {
+      "Text": "CUMULUS BON 10.\n-",
+      "Confidence": 72.3565444946289
+     },
+     "ValueDetection": {
+      "Text": "10.00- 9",
+      "Confidence": 98.88909912109375
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "OTHER",
+      "Confidence": 91.73074340820312
+     },
+     "LabelDetection": {
+      "Text": "Cumulus-Bonuspunkte",
+      "Confidence": 92.02717590332031
+     },
+     "ValueDetection": {
+      "Text": "+3xPkt. Ges. .Sort. 647.10\nBonus-Coupon 2x 431.40",
+      "Confidence": 83.00789642333984
+     },
+     "PageNumber": 1
+    },
+    {
+     "Type": {
+      "Text": "OTHER",
+      "Confidence": 97.53713989257812
+     },
+     "LabelDetection": {
+      "Text": "+3xPkt. Ges. .Sort.",
+      "Confidence": 79.34940338134766
+     },
+     "ValueDetection": {
+      "Text": "647.10",
+      "Confidence": 93.9949951171875
+     },
+     "PageNumber": 1
+    }
+   ],
+   "LineItemGroups": [
+    {
+     "LineItemGroupIndex": 1,
+     "LineItems": [
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.97480773925781
+         },
+         "ValueDetection": {
+          "Text": "MClass Joghurt Mokka",
+          "Confidence": 99.95039367675781
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99977111816406
+         },
+         "ValueDetection": {
+          "Text": "9.60",
+          "Confidence": 99.92497253417969
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99711608886719
+         },
+         "ValueDetection": {
+          "Text": "16",
+          "Confidence": 99.95616149902344
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99292755126953
+         },
+         "ValueDetection": {
+          "Text": "0.60",
+          "Confidence": 99.9636001586914
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9866943359375
+         },
+         "ValueDetection": {
+          "Text": "MClass Joghurt Mokka 16 0.60 9.60 1",
+          "Confidence": 96.5963363647461
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.96571350097656
+         },
+         "ValueDetection": {
+          "Text": "Soft Comfort Recycling",
+          "Confidence": 99.93582153320312
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99945068359375
+         },
+         "ValueDetection": {
+          "Text": "8.20",
+          "Confidence": 99.98243713378906
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 98.04285430908203
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 96.61477661132812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99722290039062
+         },
+         "ValueDetection": {
+          "Text": "8.20",
+          "Confidence": 99.9886245727539
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.64183807373047
+         },
+         "ValueDetection": {
+          "Text": "Soft Comfort Recycling 1 8.20 8.20 2",
+          "Confidence": 99.31433868408203
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.9842529296875
+         },
+         "ValueDetection": {
+          "Text": "Ragusa Cadeau 400g",
+          "Confidence": 99.96627807617188
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99974822998047
+         },
+         "ValueDetection": {
+          "Text": "14.30",
+          "Confidence": 99.99042510986328
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99767303466797
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.17576599121094
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9991683959961
+         },
+         "ValueDetection": {
+          "Text": "14.30",
+          "Confidence": 99.99494934082031
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.98052978515625
+         },
+         "ValueDetection": {
+          "Text": "Ragusa Cadeau 400g 1 14.30 14.30 1",
+          "Confidence": 98.58168029785156
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99455261230469
+         },
+         "ValueDetection": {
+          "Text": "F Branches Milk 50x27g",
+          "Confidence": 99.88435363769531
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99977111816406
+         },
+         "ValueDetection": {
+          "Text": "12.35",
+          "Confidence": 99.99263000488281
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.98927307128906
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.09004211425781
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99580383300781
+         },
+         "ValueDetection": {
+          "Text": "24.75",
+          "Confidence": 99.98847198486328
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99061584472656
+         },
+         "ValueDetection": {
+          "Text": "F Branches Milk 50x27g 1 24.75 12.40 12.35 1",
+          "Confidence": 98.82142639160156
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.9983901977539
+         },
+         "ValueDetection": {
+          "Text": "Paprika Wave Chips",
+          "Confidence": 99.98348236083984
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99966430664062
+         },
+         "ValueDetection": {
+          "Text": "4.00",
+          "Confidence": 99.98381042480469
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99622344970703
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.9355697631836
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99842834472656
+         },
+         "ValueDetection": {
+          "Text": "2.00",
+          "Confidence": 99.98806762695312
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99816131591797
+         },
+         "ValueDetection": {
+          "Text": "Paprika Wave Chips 2 2.00 4.00 1",
+          "Confidence": 99.1259536743164
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.9933090209961
+         },
+         "ValueDetection": {
+          "Text": "MBud Magerquark 500g",
+          "Confidence": 99.97560119628906
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99952697753906
+         },
+         "ValueDetection": {
+          "Text": "1.30",
+          "Confidence": 99.98743438720703
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99885559082031
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.44357299804688
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99214172363281
+         },
+         "ValueDetection": {
+          "Text": "1.30",
+          "Confidence": 99.97856903076172
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99459075927734
+         },
+         "ValueDetection": {
+          "Text": "MBud Magerquark 500g 1 1.30 1.30 1",
+          "Confidence": 97.268798828125
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99232482910156
+         },
+         "ValueDetection": {
+          "Text": "Migros Ice Coffee",
+          "Confidence": 99.9858169555664
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9993896484375
+         },
+         "ValueDetection": {
+          "Text": "2.40",
+          "Confidence": 99.98336029052734
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99951171875
+         },
+         "ValueDetection": {
+          "Text": "4",
+          "Confidence": 99.96712493896484
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99773406982422
+         },
+         "ValueDetection": {
+          "Text": "0.60",
+          "Confidence": 99.98747253417969
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99813079833984
+         },
+         "ValueDetection": {
+          "Text": "Migros Ice Coffee 4 0.60 2.40 1",
+          "Confidence": 99.13529205322266
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99539947509766
+         },
+         "ValueDetection": {
+          "Text": "Migros Erdbeer-Milch",
+          "Confidence": 99.72061157226562
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99947357177734
+         },
+         "ValueDetection": {
+          "Text": "2.80",
+          "Confidence": 99.98021697998047
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.9989013671875
+         },
+         "ValueDetection": {
+          "Text": "4",
+          "Confidence": 99.95112609863281
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99571990966797
+         },
+         "ValueDetection": {
+          "Text": "0.70",
+          "Confidence": 99.98385620117188
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99620819091797
+         },
+         "ValueDetection": {
+          "Text": "Migros Erdbeer-Milch 4 0.70 2.80 1",
+          "Confidence": 97.67247772216797
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98579406738281
+         },
+         "ValueDetection": {
+          "Text": "MBud Doppelkeks",
+          "Confidence": 99.9751205444336
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9993896484375
+         },
+         "ValueDetection": {
+          "Text": "1.70",
+          "Confidence": 99.96630096435547
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.9974594116211
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.37480926513672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99639129638672
+         },
+         "ValueDetection": {
+          "Text": "1.70",
+          "Confidence": 99.97940063476562
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99209594726562
+         },
+         "ValueDetection": {
+          "Text": "MBud Doppelkeks 1 1.70 1.70 1",
+          "Confidence": 97.26522827148438
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.97907257080078
+         },
+         "ValueDetection": {
+          "Text": "Twist Classic 4x",
+          "Confidence": 99.81639099121094
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99906158447266
+         },
+         "ValueDetection": {
+          "Text": "5.20",
+          "Confidence": 99.98063659667969
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99900817871094
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.35381317138672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99842834472656
+         },
+         "ValueDetection": {
+          "Text": "5.20",
+          "Confidence": 99.98650360107422
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.98603820800781
+         },
+         "ValueDetection": {
+          "Text": "Twist Classic 4x 1 5.20 5.20 2",
+          "Confidence": 99.6662826538086
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.97138214111328
+         },
+         "ValueDetection": {
+          "Text": "M-Bud Puffreis Milcher",
+          "Confidence": 99.9134750366211
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99878692626953
+         },
+         "ValueDetection": {
+          "Text": "4.60",
+          "Confidence": 99.97989654541016
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99861907958984
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.94143676757812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9989242553711
+         },
+         "ValueDetection": {
+          "Text": "2.30",
+          "Confidence": 99.98731994628906
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.97676849365234
+         },
+         "ValueDetection": {
+          "Text": "M-Bud Puffreis Milcher 2 2.30 4.60 1",
+          "Confidence": 98.25967407226562
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98953247070312
+         },
+         "ValueDetection": {
+          "Text": "F Kug. classics 1kg",
+          "Confidence": 99.8797607421875
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99938201904297
+         },
+         "ValueDetection": {
+          "Text": "18.50",
+          "Confidence": 99.98076629638672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99614715576172
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.03914642333984
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9994125366211
+         },
+         "ValueDetection": {
+          "Text": "18.50",
+          "Confidence": 99.98660278320312
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99137878417969
+         },
+         "ValueDetection": {
+          "Text": "F Kug. classics 1kg 1 18.50 18.50 1",
+          "Confidence": 96.79393005371094
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.993896484375
+         },
+         "ValueDetection": {
+          "Text": "MBud Family Pizza",
+          "Confidence": 99.96587371826172
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99983215332031
+         },
+         "ValueDetection": {
+          "Text": "5.00",
+          "Confidence": 99.98224639892578
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.86222839355469
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.37215423583984
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9991683959961
+         },
+         "ValueDetection": {
+          "Text": "5.00",
+          "Confidence": 99.93693542480469
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9972915649414
+         },
+         "ValueDetection": {
+          "Text": "MBud Family Pizza 1 5.00 5.00 1",
+          "Confidence": 93.85728454589844
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99861907958984
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Curry Madras",
+          "Confidence": 99.9863052368164
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99976348876953
+         },
+         "ValueDetection": {
+          "Text": "1.65",
+          "Confidence": 99.96946716308594
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.95647430419922
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.35337829589844
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99960327148438
+         },
+         "ValueDetection": {
+          "Text": "1.65",
+          "Confidence": 99.9924087524414
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99690246582031
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Curry Madras 1 1.65 1.65 1",
+          "Confidence": 97.37741088867188
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.9953842163086
+         },
+         "ValueDetection": {
+          "Text": "Poulet Schnitzel",
+          "Confidence": 99.98167419433594
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99982452392578
+         },
+         "ValueDetection": {
+          "Text": "11.40",
+          "Confidence": 99.93891906738281
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.94596862792969
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.5820083618164
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99758911132812
+         },
+         "ValueDetection": {
+          "Text": "33.00",
+          "Confidence": 99.990234375
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99162292480469
+         },
+         "ValueDetection": {
+          "Text": "Poulet Schnitzel 1 33.00 11.40 1",
+          "Confidence": 92.81057739257812
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99002075195312
+         },
+         "ValueDetection": {
+          "Text": "Schweinsplätzli",
+          "Confidence": 99.52523803710938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99958038330078
+         },
+         "ValueDetection": {
+          "Text": "10.60",
+          "Confidence": 99.9728012084961
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.94352722167969
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.36731719970703
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99871063232422
+         },
+         "ValueDetection": {
+          "Text": "19.50",
+          "Confidence": 99.99287414550781
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99622344970703
+         },
+         "ValueDetection": {
+          "Text": "Schweinsplätzli 1 19.50 10.60 1",
+          "Confidence": 95.73967742919922
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99592590332031
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Minestrone",
+          "Confidence": 99.95938873291016
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9996337890625
+         },
+         "ValueDetection": {
+          "Text": "3.40",
+          "Confidence": 99.98314666748047
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.64207458496094
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.59282684326172
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99760437011719
+         },
+         "ValueDetection": {
+          "Text": "1.70",
+          "Confidence": 99.89955139160156
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99822235107422
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Minestrone 2 1.70 3.40 1",
+          "Confidence": 98.27078247070312
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99037170410156
+         },
+         "ValueDetection": {
+          "Text": "M-Bud Cremeseife NFB",
+          "Confidence": 99.9781265258789
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99942779541016
+         },
+         "ValueDetection": {
+          "Text": "1.65",
+          "Confidence": 99.97892761230469
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.68075561523438
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 97.71161651611328
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99290466308594
+         },
+         "ValueDetection": {
+          "Text": "1.65",
+          "Confidence": 99.97491455078125
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99691009521484
+         },
+         "ValueDetection": {
+          "Text": "M-Bud Cremeseife NFB 1 1.65 1.65 2\n6",
+          "Confidence": 89.61000061035156
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99474334716797
+         },
+         "ValueDetection": {
+          "Text": "Rexona Deo AE Cott 72h",
+          "Confidence": 99.96759796142578
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99906921386719
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.97551727294922
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.81449890136719
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.21124267578125
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99411010742188
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.98334503173828
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99693298339844
+         },
+         "ValueDetection": {
+          "Text": "Rexona Deo AE Cott 72h 1 3.95 3.95 2",
+          "Confidence": 99.69812774658203
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98872375488281
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Bratensauce",
+          "Confidence": 99.97589874267578
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99954986572266
+         },
+         "ValueDetection": {
+          "Text": "3.20",
+          "Confidence": 99.97057342529297
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.68806457519531
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.62322235107422
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99436950683594
+         },
+         "ValueDetection": {
+          "Text": "1.60",
+          "Confidence": 99.982666015625
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.98902130126953
+         },
+         "ValueDetection": {
+          "Text": "Bon Chef Bratensauce 2 1.60 3.20 1",
+          "Confidence": 99.01631927490234
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98533630371094
+         },
+         "ValueDetection": {
+          "Text": "IPS Kristallzucken",
+          "Confidence": 99.94794464111328
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99372100830078
+         },
+         "ValueDetection": {
+          "Text": "1.80",
+          "Confidence": 99.9832992553711
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.33348846435547
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.91505432128906
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99207305908203
+         },
+         "ValueDetection": {
+          "Text": "1.80",
+          "Confidence": 99.9862060546875
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.98617553710938
+         },
+         "ValueDetection": {
+          "Text": "IPS Kristallzucken 1 1.80 1.80 1",
+          "Confidence": 99.3079605102539
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99444580078125
+         },
+         "ValueDetection": {
+          "Text": "Rindshackfleisch",
+          "Confidence": 99.78506469726562
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99420928955078
+         },
+         "ValueDetection": {
+          "Text": "7.85",
+          "Confidence": 99.98224639892578
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.28963470458984
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.85116577148438
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99429321289062
+         },
+         "ValueDetection": {
+          "Text": "15.50",
+          "Confidence": 99.98774719238281
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99263000488281
+         },
+         "ValueDetection": {
+          "Text": "Rindshackfleisch 1 15.50 7.85 1",
+          "Confidence": 97.9073257446289
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.97852325439453
+         },
+         "ValueDetection": {
+          "Text": "MBud Mostmöckli",
+          "Confidence": 99.95181274414062
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9990234375
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.98507690429688
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.81188201904297
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.38915252685547
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9993667602539
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.98236083984375
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99091339111328
+         },
+         "ValueDetection": {
+          "Text": "MBud Mostmöckli 1 3.95 3.95 1",
+          "Confidence": 99.0890884399414
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99388122558594
+         },
+         "ValueDetection": {
+          "Text": "Vernicelles-Becher",
+          "Confidence": 99.11034393310547
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99974822998047
+         },
+         "ValueDetection": {
+          "Text": "3.80",
+          "Confidence": 99.994384765625
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.95777893066406
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.51173400878906
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99877166748047
+         },
+         "ValueDetection": {
+          "Text": "3.80",
+          "Confidence": 99.98551940917969
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9935531616211
+         },
+         "ValueDetection": {
+          "Text": "Vernicelles-Becher 1 3.80 3.80 1",
+          "Confidence": 98.87565612792969
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.9985122680664
+         },
+         "ValueDetection": {
+          "Text": "Crémecornets 2 Stück",
+          "Confidence": 99.93535614013672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99955749511719
+         },
+         "ValueDetection": {
+          "Text": "4.90",
+          "Confidence": 99.993896484375
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.94393920898438
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.20295715332031
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99908447265625
+         },
+         "ValueDetection": {
+          "Text": "4.90",
+          "Confidence": 99.98224639892578
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99896240234375
+         },
+         "ValueDetection": {
+          "Text": "Crémecornets 2 Stück 1 4.90 4.90 1",
+          "Confidence": 99.19249725341797
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99728393554688
+         },
+         "ValueDetection": {
+          "Text": "Valflora Crème Fraiche",
+          "Confidence": 99.92825317382812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99946594238281
+         },
+         "ValueDetection": {
+          "Text": "2.25",
+          "Confidence": 99.97710418701172
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.97053527832031
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.5063247680664
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9994125366211
+         },
+         "ValueDetection": {
+          "Text": "2.25",
+          "Confidence": 99.97040557861328
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99720001220703
+         },
+         "ValueDetection": {
+          "Text": "Valflora Crème Fraiche 1 2.25 2.25 1",
+          "Confidence": 98.8329849243164
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98529815673828
+         },
+         "ValueDetection": {
+          "Text": "Poulet Schnitzel",
+          "Confidence": 99.94600677490234
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99955749511719
+         },
+         "ValueDetection": {
+          "Text": "11.65",
+          "Confidence": 99.9659652709961
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99519348144531
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.53162384033203
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99818420410156
+         },
+         "ValueDetection": {
+          "Text": "33.00",
+          "Confidence": 99.98501586914062
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99576568603516
+         },
+         "ValueDetection": {
+          "Text": "Poulet Schnitzel 1 33.00 11.65 1",
+          "Confidence": 93.75518035888672
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99327850341797
+         },
+         "ValueDetection": {
+          "Text": "M-Classic Curry hot",
+          "Confidence": 99.95484924316406
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9994888305664
+         },
+         "ValueDetection": {
+          "Text": "2.80",
+          "Confidence": 99.96935272216797
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.98822021484375
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.23563385009766
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99824523925781
+         },
+         "ValueDetection": {
+          "Text": "2.80",
+          "Confidence": 99.98116302490234
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99505615234375
+         },
+         "ValueDetection": {
+          "Text": "M-Classic Curry hot 1 2.80 2.80 1",
+          "Confidence": 87.40353393554688
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99614715576172
+         },
+         "ValueDetection": {
+          "Text": "Nusskäse Finesse",
+          "Confidence": 99.98467254638672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99944305419922
+         },
+         "ValueDetection": {
+          "Text": "4.60",
+          "Confidence": 99.9406967163086
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99656677246094
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.52983856201172
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99581909179688
+         },
+         "ValueDetection": {
+          "Text": "35.50",
+          "Confidence": 99.9156265258789
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99589538574219
+         },
+         "ValueDetection": {
+          "Text": "Nusskäse Finesse 1 35.50 4.60 1",
+          "Confidence": 80.40457153320312
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99226379394531
+         },
+         "ValueDetection": {
+          "Text": "Honiglebkuchen",
+          "Confidence": 99.89535522460938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99874877929688
+         },
+         "ValueDetection": {
+          "Text": "3.60",
+          "Confidence": 99.97099304199219
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.9912109375
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.77627563476562
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99164581298828
+         },
+         "ValueDetection": {
+          "Text": "1.80",
+          "Confidence": 99.85257720947266
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99211120605469
+         },
+         "ValueDetection": {
+          "Text": "Honiglebkuchen 2 1.80 3.60 1",
+          "Confidence": 79.43452453613281
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.96552276611328
+         },
+         "ValueDetection": {
+          "Text": "St. Galler Brot ruch",
+          "Confidence": 99.30069732666016
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9984359741211
+         },
+         "ValueDetection": {
+          "Text": "2.20",
+          "Confidence": 99.97328186035156
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.94876098632812
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.50910949707031
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9788589477539
+         },
+         "ValueDetection": {
+          "Text": "2.20",
+          "Confidence": 99.96875
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99131774902344
+         },
+         "ValueDetection": {
+          "Text": "St. Galler Brot ruch 1 2.20 2.20 1",
+          "Confidence": 91.13998413085938
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.98675537109375
+         },
+         "ValueDetection": {
+          "Text": "MBud Joghurt Natur",
+          "Confidence": 99.97708129882812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99919891357422
+         },
+         "ValueDetection": {
+          "Text": "0.80",
+          "Confidence": 99.97758483886719
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.97772216796875
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.9776840209961
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.98257446289062
+         },
+         "ValueDetection": {
+          "Text": "0.80",
+          "Confidence": 99.9663314819336
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99325561523438
+         },
+         "ValueDetection": {
+          "Text": "MBud Joghurt Natur 1 0.80 0.80 1",
+          "Confidence": 98.36856842041016
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.97867584228516
+         },
+         "ValueDetection": {
+          "Text": "Nivea volume sen.Mous.",
+          "Confidence": 98.60115814208984
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99607849121094
+         },
+         "ValueDetection": {
+          "Text": "4.95",
+          "Confidence": 99.98387145996094
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.97195434570312
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.86763763427734
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.98921203613281
+         },
+         "ValueDetection": {
+          "Text": "4.95",
+          "Confidence": 99.98018646240234
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99589538574219
+         },
+         "ValueDetection": {
+          "Text": "Nivea volume sen.Mous. 1 4.95 4.95 2",
+          "Confidence": 99.1646499633789
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.96744537353516
+         },
+         "ValueDetection": {
+          "Text": "Migros Hörnli gross",
+          "Confidence": 99.95467376708984
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99993133544922
+         },
+         "ValueDetection": {
+          "Text": "3.50",
+          "Confidence": 99.98831939697266
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.9982681274414
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.9035415649414
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99559020996094
+         },
+         "ValueDetection": {
+          "Text": "1.75",
+          "Confidence": 99.98614501953125
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.61824798583984
+         },
+         "ValueDetection": {
+          "Text": "Migros Hörnli gross 2 1.75 3.50 1",
+          "Confidence": 99.09293365478516
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99723815917969
+         },
+         "ValueDetection": {
+          "Text": "Total Gallenseife mit",
+          "Confidence": 99.97776794433594
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99991607666016
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.99263000488281
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99990844726562
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.66015625
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99838256835938
+         },
+         "ValueDetection": {
+          "Text": "3.95",
+          "Confidence": 99.98421478271484
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99883270263672
+         },
+         "ValueDetection": {
+          "Text": "Total Gallenseife mit 1 3.95 3.95 2",
+          "Confidence": 99.7562026977539
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99896240234375
+         },
+         "ValueDetection": {
+          "Text": "Bananen",
+          "Confidence": 99.99404907226562
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99995422363281
+         },
+         "ValueDetection": {
+          "Text": "2.30",
+          "Confidence": 99.98117065429688
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99993896484375
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.58522033691406
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99609375
+         },
+         "ValueDetection": {
+          "Text": "2.50",
+          "Confidence": 99.98764038085938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9993896484375
+         },
+         "ValueDetection": {
+          "Text": "Bananen 1 2.50 2.30 1",
+          "Confidence": 99.04300689697266
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99908447265625
+         },
+         "ValueDetection": {
+          "Text": "Le Gruyère 130g",
+          "Confidence": 99.60238647460938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99983215332031
+         },
+         "ValueDetection": {
+          "Text": "2.95",
+          "Confidence": 99.98200225830078
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 100.0
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.41574096679688
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99830627441406
+         },
+         "ValueDetection": {
+          "Text": "2.95",
+          "Confidence": 99.98573303222656
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99987030029297
+         },
+         "ValueDetection": {
+          "Text": "Le Gruyère 130g 1 2.95 2.95 1",
+          "Confidence": 98.88727569580078
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99894714355469
+         },
+         "ValueDetection": {
+          "Text": "Extra Kart: Amandine",
+          "Confidence": 99.96826934814453
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99984741210938
+         },
+         "ValueDetection": {
+          "Text": "5.90",
+          "Confidence": 99.99156188964844
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99993896484375
+         },
+         "ValueDetection": {
+          "Text": "2",
+          "Confidence": 99.935302734375
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9944839477539
+         },
+         "ValueDetection": {
+          "Text": "2.95",
+          "Confidence": 99.98295593261719
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99991607666016
+         },
+         "ValueDetection": {
+          "Text": "Extra Kart: Amandine 2 2.95 5.90 1",
+          "Confidence": 98.54293060302734
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99685668945312
+         },
+         "ValueDetection": {
+          "Text": "Rapelli Salametti",
+          "Confidence": 99.95702362060547
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9998550415039
+         },
+         "ValueDetection": {
+          "Text": "4.95",
+          "Confidence": 99.99105834960938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99993896484375
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 98.3066177368164
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99797058105469
+         },
+         "ValueDetection": {
+          "Text": "4.95",
+          "Confidence": 99.99055480957031
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99955749511719
+         },
+         "ValueDetection": {
+          "Text": "Rapelli Salametti 1 4.95 4.95 1",
+          "Confidence": 98.8985824584961
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99847412109375
+         },
+         "ValueDetection": {
+          "Text": "M Apfelmus ohne Zucker",
+          "Confidence": 99.8884048461914
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.9996337890625
+         },
+         "ValueDetection": {
+          "Text": "1.70",
+          "Confidence": 99.98524475097656
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99998474121094
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 97.70892333984375
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9937515258789
+         },
+         "ValueDetection": {
+          "Text": "1.70",
+          "Confidence": 99.97935485839844
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9993667602539
+         },
+         "ValueDetection": {
+          "Text": "M Apfelmus ohne Zucker 1 1.70 1.70 1",
+          "Confidence": 98.83313751220703
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99715423583984
+         },
+         "ValueDetection": {
+          "Text": "Alnatura Rahmspinat",
+          "Confidence": 99.97643280029297
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99979400634766
+         },
+         "ValueDetection": {
+          "Text": "2.40",
+          "Confidence": 99.98760223388672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99996185302734
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 97.63430786132812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99417114257812
+         },
+         "ValueDetection": {
+          "Text": "2.40",
+          "Confidence": 99.98245239257812
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.9993667602539
+         },
+         "ValueDetection": {
+          "Text": "Alnatura Rahmspinat 1 2.40 2.40 1",
+          "Confidence": 98.90870666503906
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99874877929688
+         },
+         "ValueDetection": {
+          "Text": "MBud Butter Mödeli",
+          "Confidence": 99.9881591796875
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99996185302734
+         },
+         "ValueDetection": {
+          "Text": "3.50",
+          "Confidence": 99.9842300415039
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.99998474121094
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 97.46452331542969
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.9983901977539
+         },
+         "ValueDetection": {
+          "Text": "3.50",
+          "Confidence": 99.9891128540039
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99974060058594
+         },
+         "ValueDetection": {
+          "Text": "MBud Butter Mödeli 1 3.50 3.50 1",
+          "Confidence": 97.68578338623047
+         },
+         "PageNumber": 1
+        }
+       ]
+      },
+      {
+       "LineItemExpenseFields": [
+        {
+         "Type": {
+          "Text": "ITEM",
+          "Confidence": 99.99859619140625
+         },
+         "ValueDetection": {
+          "Text": "Cantadou Pfeffer",
+          "Confidence": 99.98587799072266
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "PRICE",
+          "Confidence": 99.99990844726562
+         },
+         "ValueDetection": {
+          "Text": "3.60",
+          "Confidence": 99.95199584960938
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "QUANTITY",
+          "Confidence": 99.9999771118164
+         },
+         "ValueDetection": {
+          "Text": "1",
+          "Confidence": 99.00715637207031
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "UNIT_PRICE",
+          "Confidence": 99.99980926513672
+         },
+         "ValueDetection": {
+          "Text": "3.60",
+          "Confidence": 99.96562957763672
+         },
+         "PageNumber": 1
+        },
+        {
+         "Type": {
+          "Text": "EXPENSE_ROW",
+          "Confidence": 99.99993133544922
+         },
+         "ValueDetection": {
+          "Text": "Cantadou Pfeffer 1 3.60 3.60 1",
+          "Confidence": 97.60457611083984
+         },
+         "PageNumber": 1
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

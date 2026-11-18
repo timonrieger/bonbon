@@ -1,6 +1,6 @@
 # 0007 Worker split and database credentials without NAT
 
-**Status:** accepted · credentials implemented, worker split in progress (stage 2: queues, DB Lambda and S3 gateway endpoint scaffolded) · Builds on [0006](0006-postgresql-on-rds.md)
+**Status:** accepted · implemented (credentials; worker split stage 2 with both Lambdas and the S3 gateway endpoint) · Builds on [0006](0006-postgresql-on-rds.md)
 
 ## Context
 

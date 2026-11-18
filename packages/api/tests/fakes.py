@@ -9,7 +9,7 @@ Keep the behavior in line with the real functions in bonbon/*/repo.py and bonbon
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError, ServiceError
@@ -17,7 +17,10 @@ from bonbon.auth import Role
 from bonbon.households import codes
 from bonbon.households.models import Household, InviteCode, Member
 from bonbon.households.repo import INVITE_VALID_HOURS, MAX_FAILED_JOINS
+from bonbon.receipts.categories import categorize
+from bonbon.receipts.expense import ExtractedReceipt
 from bonbon.receipts.models import ReceiptItem, ReceiptStatus, ReceiptSummary, month_bounds
+from bonbon.receipts.repo import WorkerOutcome
 from bonbon.reports.models import (
     CategoryTotal,
     MonthlyReport,
@@ -37,6 +40,8 @@ class FakeReceipt:
     total_rappen: int | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     items: list[ReceiptItem] = field(default_factory=list)
+    file_hash: str | None = None
+    processed_at: datetime | None = None
 
     @property
     def day(self) -> date:
@@ -59,6 +64,8 @@ class FakeDatabase:
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
         self.receipts: dict[UUID, FakeReceipt] = {}
+        # (keyword, category) like category_rules; empty: every item is 'Sonstiges'
+        self.category_rules: list[tuple[str, str]] = []
         # code hash -> invite; only the hash is kept, like in invite_codes
         self.invites: dict[str, FakeInvite] = {}
         # (user id, attempted_at) of failed joins
@@ -187,6 +194,10 @@ class FakeDatabase:
             self.memberships[(h, owner_id)] = "member"
             self.memberships[(h, new_owner_id)] = "owner"
 
+    # bonbon.receipts.categories
+    def rules(self) -> list[tuple[str, str]]:
+        return self.category_rules
+
     # bonbon.users.repo
     def sync_user(self, user_id: str, display_name: str, email: str | None) -> None:
         self.users[user_id] = (display_name, email)
@@ -246,6 +257,51 @@ class FakeDatabase:
             created_at=r.created_at,
             possible_duplicate=duplicate,
         )
+
+    def finish_extracted(
+        self, household_id: UUID, receipt_id: UUID, file_hash: str, receipt: ExtractedReceipt
+    ) -> WorkerOutcome:
+        r = self.receipts.get(receipt_id)
+        if r is None or r.household_id != household_id:
+            return "missing"
+        if r.status != "uploaded":
+            return "unchanged"
+        same_file = any(
+            other_id != receipt_id
+            and o.household_id == household_id
+            and o.file_hash == file_hash
+            and o.status not in ("duplicate", "failed")
+            for other_id, o in self.receipts.items()
+        )
+        outcome: Literal["done", "duplicate"] = "duplicate" if same_file else "done"
+        r.status = outcome
+        r.file_hash = file_hash
+        r.store, r.purchase_date = receipt.store, receipt.purchase_date
+        r.total_rappen = receipt.total_rappen
+        r.processed_at = datetime.now(UTC)
+        if outcome == "done":
+            r.items = [
+                ReceiptItem(
+                    position=position,
+                    name=item.name,
+                    quantity=float(item.quantity),
+                    unit_price_rappen=item.unit_price_rappen,
+                    amount_rappen=item.amount_rappen,
+                    category=categorize(item.name),
+                )
+                for position, item in enumerate(receipt.items, start=1)
+            ]
+        return outcome
+
+    def finish_failed(self, household_id: UUID, receipt_id: UUID) -> WorkerOutcome:
+        r = self.receipts.get(receipt_id)
+        if r is None or r.household_id != household_id:
+            return "missing"
+        if r.status != "uploaded":
+            return "unchanged"
+        r.status = "failed"
+        r.processed_at = datetime.now(UTC)
+        return "failed"
 
     # Test setup: receipts as the worker will leave them.
     def add_receipt(self, household_id: UUID, uploaded_by: str | None, **fields: Any) -> UUID:
