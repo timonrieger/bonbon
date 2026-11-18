@@ -32,6 +32,9 @@ Parameters:
 
 Conditions:
   CreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, "true"]
+  # The hosted frontend (WebApp, WebBranch) exists only on prod; dev stacks use
+  # `mise run dev` on localhost.
+  IsProd: !Equals [!Ref Stage, prod]
 
 # Single source for the retry count: the ReceiptsQueue redrive policy and the Textract Lambda's
 # MAX_RECEIVE_COUNT read the same value, so "last attempt" in the code always matches the point
@@ -52,6 +55,8 @@ Globals:
         RECEIPTS_BUCKET: !Ref ReceiptsBucket
         POWERTOOLS_SERVICE_NAME: bonbon
         STAGE: !Ref Stage
+        # The only origin the API answers with CORS headers (bonbon/http.py)
+        ALLOWED_ORIGIN: !If [IsProd, !Sub "https://main.${WebApp.DefaultDomain}", "http://localhost:5173"]
 
 Resources:
   # PostgreSQL on RDS, see docs/decisions/0006 and 0007.
@@ -182,8 +187,9 @@ Resources:
           HttpMethod: "*"
           ThrottlingRateLimit: 25
           ThrottlingBurstLimit: 50
+      # Only the app's own origin: Amplify Hosting on prod, the Vite dev server on dev.
       Cors:
-        AllowOrigin: "'*'"
+        AllowOrigin: !If [IsProd, !Sub "'https://main.${WebApp.DefaultDomain}'", "'http://localhost:5173'"]
         AllowHeaders: "'Authorization,Content-Type'"
         AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
       Auth:
@@ -197,12 +203,12 @@ Resources:
         DEFAULT_4XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !If [IsProd, !Sub "'https://main.${WebApp.DefaultDomain}'", "'http://localhost:5173'"]
               Access-Control-Allow-Headers: "'Authorization,Content-Type'"
         DEFAULT_5XX:
           ResponseParameters:
             Headers:
-              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Origin: !If [IsProd, !Sub "'https://main.${WebApp.DefaultDomain}'", "'http://localhost:5173'"]
               Access-Control-Allow-Headers: "'Authorization,Content-Type'"
 
   # One function per domain; routes inside it are handled by Powertools.
@@ -371,7 +377,7 @@ Resources:
           - ObjectOwnership: BucketOwnerEnforced
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins: ["*"]
+          - AllowedOrigins: [!If [IsProd, !Sub "https://main.${WebApp.DefaultDomain}", "http://localhost:5173"]]
             AllowedMethods: [PUT, GET]
             AllowedHeaders: ["*"]
             MaxAge: 3600
@@ -544,6 +550,31 @@ Resources:
           DB_APP_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
           DB_APP_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
 
+  # The built React app (packages/web/dist), on Amplify Hosting (ADR 0008). Prod only.
+  # The Learner Lab denies every CloudFront call, so S3 + our own distribution isn't possible.
+  # Amplify serves over HTTPS from its own managed storage, so no bucket is public. No
+  # IAMServiceRole: `mise run deploy:web` uploads a zip, Amplify never builds from Git.
+  WebApp:
+    Type: AWS::Amplify::App
+    Condition: IsProd
+    Properties:
+      Name: !Sub bonbon-${Stage}
+      Platform: WEB
+      # Client-side routes (BrowserRouter) aren't files: every path without a file extension
+      # serves index.html with status 200, and the router takes over.
+      CustomRules:
+        - Source: "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>"
+          Target: /index.html
+          Status: "200"
+
+  WebBranch:
+    Type: AWS::Amplify::Branch
+    Condition: IsProd
+    Properties:
+      AppId: !GetAtt WebApp.AppId
+      BranchName: main
+      Stage: PRODUCTION
+
 Outputs:
   ApiUrl:
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/api
@@ -555,3 +586,9 @@ Outputs:
     Value: !Ref MigrateFunction
   DbInstanceId:
     Value: !Ref Database
+  WebUrl:
+    Condition: IsProd
+    Value: !Sub https://main.${WebApp.DefaultDomain}
+  WebAppId:
+    Condition: IsProd
+    Value: !GetAtt WebApp.AppId
