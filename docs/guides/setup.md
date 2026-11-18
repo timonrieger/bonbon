@@ -49,6 +49,8 @@ This creates `bonbon-dev` in your account (API, login, PostgreSQL database), app
 
 Stop it with Ctrl+C in the terminal.
 
+When a lab session ends, AWS disables the queue triggers of the worker Lambdas (`LabRole` briefly loses its rights, the SQS poller fails and switches itself off). Uploaded receipts then stay «in Bearbeitung». `mise run dev`, `stack:up` and `deploy:prod` turn the triggers back on; without them, run `mise run stack:workers` (or `stack:workers bonbon-prod`) once per session. Uploads wait in the queue meanwhile (up to 4 days) and are processed once the trigger is on again.
+
 ## Budget
 
 Each account has 50 USD. Check the remaining budget weekly (shown in the Learner Lab).

@@ -62,6 +62,7 @@ depends = ["//packages/api:requirements"]
 run = [
   "sam build --cached --parallel",
   "sam deploy --config-env dev --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\"",
+  { task = "stack:workers" },
   { task = "env" },
   { task = "db:migrate" },
 ]
@@ -80,9 +81,13 @@ description = "Stop your dev database to save money (storage still costs). AWS s
 run = "aws rds start-db-instance --db-instance-identifier bonbon-dev --query DBInstance.DBInstanceStatus --output text"
 description = "Start your stopped dev database (takes a few minutes)"
 
+# stack:workers first: a new Learner Lab session leaves the queue triggers disabled (see the script).
 [tasks.sync]
 depends = ["//packages/api:requirements"]
-run = "sam sync --config-env dev --watch --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\""
+run = [
+  { task = "stack:workers" },
+  "sam sync --config-env dev --watch --parameter-overrides \"Stage=dev $(.mise/tasks/stack-params.py bonbon-dev)\"",
+]
 raw = true
 description = "Watch for changes and push them to your dev stack within seconds"
 
@@ -96,5 +101,6 @@ confirm = "Deploy to PROD (stack bonbon-prod in the current AWS account)?"
 run = [
   "sam build --cached --parallel",
   "sam deploy --config-env prod --parameter-overrides \"Stage=prod $(.mise/tasks/stack-params.py bonbon-prod)\"",
+  ".mise/tasks/stack/workers.py bonbon-prod",
 ]
 description = "Deploy the production stack. Only the infra owner runs this, from main"
