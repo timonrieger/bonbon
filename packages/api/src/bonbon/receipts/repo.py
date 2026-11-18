@@ -1,9 +1,17 @@
+from typing import Literal
 from uuid import UUID
 
 from aws_lambda_powertools.event_handler.exceptions import NotFoundError
+from pg8000.native import Connection
 
 from bonbon import db
+from bonbon.receipts.categories import categorize
+from bonbon.receipts.expense import ExtractedReceipt
 from bonbon.receipts.models import ReceiptItem, ReceiptSummary, month_bounds
+
+# What the database worker did with a receipt: its new status, 'unchanged' if it had left
+# 'uploaded' already (a second delivery), 'missing' if the receipt no longer exists.
+WorkerOutcome = Literal["done", "duplicate", "failed", "unchanged", "missing"]
 
 # The day a receipt counts towards: its purchase date, or else the day it was uploaded, in
 # Swiss time (the database runs in UTC). The receipt list, its month filter and the reports
@@ -81,6 +89,96 @@ def get(household_id: str, receipt_id: str) -> tuple[ReceiptSummary, list[Receip
         )
         for position, name, quantity, unit_price, amount, category in items
     ]
+
+
+def finish_extracted(
+    household_id: UUID, receipt_id: UUID, file_hash: str, receipt: ExtractedReceipt
+) -> WorkerOutcome:
+    """Store what Textract read and set 'done', or 'duplicate' for a file already in the household.
+
+    One transaction, guarded by status 'uploaded' (docs/decisions/0007): a second delivery
+    changes nothing, and a crash rolls back everything, so the retry starts clean. Two uploads
+    of the same file processed at the same time collide on the file-hash index; the loser rolls
+    back, and its retry finds the other receipt and becomes 'duplicate'.
+    """
+    # Before the transaction: categorize() may load its rules from the database, and a query
+    # that reconnects in the middle of an open transaction would lose it.
+    categories = [categorize(item.name) for item in receipt.items]
+    with db.transaction() as conn:
+        status = _lock_uploaded(conn, household_id, receipt_id)
+        if status != "uploaded":
+            return status
+        same_file = conn.run(
+            "SELECT 1 FROM receipts WHERE household_id = :household_id"
+            " AND file_hash = :file_hash AND id <> :receipt_id"
+            " AND status NOT IN ('duplicate', 'failed')",
+            household_id=household_id,
+            file_hash=file_hash,
+            receipt_id=receipt_id,
+        )
+        outcome: WorkerOutcome = "duplicate" if same_file else "done"
+        # A duplicate keeps store, date and total so the list shows which receipt it is, but
+        # no items: it never counts in the reports.
+        conn.run(
+            "UPDATE receipts SET status = :status, file_hash = :file_hash, store = :store,"
+            " purchase_date = :purchase_date, total_rappen = :total_rappen, processed_at = now()"
+            " WHERE id = :receipt_id",
+            status=outcome,
+            file_hash=file_hash,
+            store=receipt.store,
+            purchase_date=receipt.purchase_date,
+            total_rappen=receipt.total_rappen,
+            receipt_id=receipt_id,
+        )
+        if outcome == "done":
+            for position, (item, category) in enumerate(
+                zip(receipt.items, categories, strict=True), start=1
+            ):
+                # A category name that doesn't exist fails the NOT NULL on category_id, so a
+                # wrong rule shows up as an error instead of a silently dropped item.
+                conn.run(
+                    "INSERT INTO receipt_items"
+                    " (receipt_id, position, name, quantity, unit_price_rappen, amount_rappen,"
+                    "  category_id)"
+                    " VALUES (:receipt_id, :position, :name, :quantity, :unit_price, :amount,"
+                    "  (SELECT id FROM categories WHERE name = :category))",
+                    receipt_id=receipt_id,
+                    position=position,
+                    name=item.name,
+                    quantity=item.quantity,
+                    unit_price=item.unit_price_rappen,
+                    amount=item.amount_rappen,
+                    category=category,
+                )
+        return outcome
+
+
+def finish_failed(household_id: UUID, receipt_id: UUID) -> WorkerOutcome:
+    """Set 'failed' after Textract gave up on the file; same guard as finish_extracted()."""
+    with db.transaction() as conn:
+        status = _lock_uploaded(conn, household_id, receipt_id)
+        if status != "uploaded":
+            return status
+        conn.run(
+            "UPDATE receipts SET status = 'failed', processed_at = now() WHERE id = :receipt_id",
+            receipt_id=receipt_id,
+        )
+        return "failed"
+
+
+def _lock_uploaded(
+    conn: Connection, household_id: UUID, receipt_id: UUID
+) -> Literal["uploaded", "unchanged", "missing"]:
+    """Lock the receipt row for this transaction and tell whether the worker may still write it."""
+    rows = conn.run(
+        "SELECT status FROM receipts WHERE id = :receipt_id AND household_id = :household_id"
+        " FOR UPDATE",
+        receipt_id=receipt_id,
+        household_id=household_id,
+    )
+    if not rows:
+        return "missing"
+    return "uploaded" if rows[0][0] == "uploaded" else "unchanged"
 
 
 def _summary(
