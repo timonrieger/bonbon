@@ -26,6 +26,7 @@ flowchart LR
   worker --> results[Results SQS + DLQ]
   results --> dbworker
   dbworker -.->|S3 gateway endpoint| s3
+  fns -.->|delete household files| s3
   worker --> sns[SNS e-mail]
 ```
 
@@ -33,13 +34,13 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway | scaffolded | @timonrieger, @nosernoel |
 | RDS PostgreSQL, security groups, secrets, migration Lambda (`mise run db:migrate`) | scaffolded | @nosernoel |
-| Households API (list, create, get, members) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
+| Households API (list, create, get, members, invites, leave, remove member, hand over owner role) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
 | SQS + DLQ, worker Lambda | scaffolded (worker only logs) | @timonrieger, @Dam-Mil |
 | Worker split: results queue + DLQ, DB Lambda inside the VPC ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda only logs) | @timonrieger, @Dam-Mil |
 | Worker split: Textract Lambda sends to the results queue ([0007](decisions/0007-worker-split-and-db-credentials.md)) | planned | @timonrieger, @Dam-Mil |
-| S3 gateway endpoint for the DB Lambda, created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda doesn't read S3 yet) | @timonrieger |
+| S3 gateway endpoint for the DB Lambda and the households Lambda (deleting a household's files), created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | scaffolded (DB Lambda doesn't read S3 yet) | @timonrieger |
 | Worker logic: Textract, categorization, status | planned | @Dam-Mil |
 | Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | scaffolded (no `done` receipts until the worker writes them) | @nosernoel |

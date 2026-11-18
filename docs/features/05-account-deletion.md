@@ -72,7 +72,11 @@ frontend bypasses the entire cleanup pipeline.
 **Planned** (all items open):
 - `DELETE /users/me`: disable Cognito account immediately, insert job into deletion SQS queue
 - Deletion worker: remove sole-member households (receipts + S3 images), remove user
-  from shared households (transfer owner role), delete the `users` row (receipts keep
+  from shared households (transfer owner role). For each household, call
+  `households.repo.remove_member(household_id, user_id, hand_over=True)`: it does both in
+  one transaction and returns `True` if the household was deleted. Then delete its files with
+  `receipts.storage.delete_household_files(household_id)` (needs S3, see [04](04-households.md)).
+  Then delete the `users` row (receipts keep
   `uploaded_by = NULL`, migration 0003), then delete Cognito account
 - Dedicated SQS queue + DLQ for deletion jobs
 - CloudWatch alarm on DLQ depth

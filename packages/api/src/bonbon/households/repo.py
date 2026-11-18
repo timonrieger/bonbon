@@ -142,5 +142,92 @@ def join(code: str, user_id: str) -> Household:
     return household
 
 
+def remove_member(
+    household_id: str, user_id: str, *, hand_over: bool = False, removed_by: str | None = None
+) -> bool:
+    """End a membership in one transaction. Returns True if the household was deleted with it.
+
+    - The last member: the household goes, and with it (ON DELETE CASCADE) memberships,
+      invite codes, receipts and their items. Its files in S3 are left to the caller.
+    - The owner while others remain: 409, or with `hand_over` the role passes to the member
+      who joined first. Only account deletion hands over (feature 05); leaving never does.
+    - `removed_by` another user: they must be the owner (403), checked under the same lock,
+      so an owner who just handed over the role can't remove anyone any more.
+
+    404 if the user (or the household) is gone.
+    """
+    with db.transaction() as conn:
+        # Lock the household: of two members leaving at once, the second one sees the first
+        # gone, so a household can't end up without members or without an owner.
+        if not conn.run(
+            "SELECT 1 FROM households WHERE id = :id FOR UPDATE", id=UUID(household_id)
+        ):
+            raise NotFoundError("Household not found")
+        roles: dict[str, Role] = dict(
+            conn.run(
+                "SELECT user_id, role FROM memberships WHERE household_id = :household_id"
+                " ORDER BY joined_at, user_id",
+                household_id=UUID(household_id),
+            )
+        )
+        if removed_by is not None and removed_by != user_id and roles.get(removed_by) != "owner":
+            raise ServiceError(403, "Only the owner can remove members")
+        if user_id not in roles:
+            raise NotFoundError("Member not found")
+        others = [other for other in roles if other != user_id]
+        if not others:
+            conn.run("DELETE FROM households WHERE id = :id", id=UUID(household_id))
+            return True
+        if roles[user_id] == "owner" and not hand_over:
+            raise ServiceError(409, "The owner must hand over the role before leaving")
+        conn.run(
+            "DELETE FROM memberships WHERE household_id = :household_id AND user_id = :user_id",
+            household_id=UUID(household_id),
+            user_id=user_id,
+        )
+        if roles[user_id] == "owner":
+            conn.run(
+                "UPDATE memberships SET role = 'owner'"
+                " WHERE household_id = :household_id AND user_id = :user_id",
+                household_id=UUID(household_id),
+                user_id=others[0],
+            )
+    return False
+
+
+def transfer_owner(household_id: str, owner_id: str, new_owner_id: str) -> None:
+    """Make another member the owner; the old owner stays as a member.
+
+    403 if `owner_id` isn't (any more) the owner, 404 if `new_owner_id` isn't a member.
+    Handing over to oneself changes nothing.
+    """
+    with db.transaction() as conn:
+        if not conn.run(
+            "SELECT 1 FROM households WHERE id = :id FOR UPDATE", id=UUID(household_id)
+        ):
+            raise NotFoundError("Household not found")
+        roles: dict[str, Role] = dict(
+            conn.run(
+                "SELECT user_id, role FROM memberships WHERE household_id = :household_id",
+                household_id=UUID(household_id),
+            )
+        )
+        if roles.get(owner_id) != "owner":
+            raise ServiceError(403, "Only the owner can hand over the role")
+        if new_owner_id not in roles:
+            raise NotFoundError("Member not found")
+        if new_owner_id == owner_id:
+            return
+        # Old owner first: the unique index allows only one owner per household at any time.
+        for user_id, role in ((owner_id, "member"), (new_owner_id, "owner")):
+            conn.run(
+                "UPDATE memberships SET role = :role"
+                " WHERE household_id = :household_id AND user_id = :user_id",
+                role=role,
+                household_id=UUID(household_id),
+                user_id=user_id,
+            )
+
+
 def _household(household_id: UUID | str, name: str, created_at: datetime, role: Role) -> Household:
     return Household(id=str(household_id), name=name, created_at=created_at, my_role=role)

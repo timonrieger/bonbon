@@ -137,6 +137,56 @@ class FakeDatabase:
         invite.used_at = now
         return self.get_household(str(invite.household_id), "member")
 
+    def _roles(self, household_id: UUID) -> dict[str, Role]:
+        """Members in the order they joined, like the ORDER BY in remove_member."""
+        found = [(u, r) for (h, u), r in self.memberships.items() if h == household_id]
+        found.sort(key=lambda ur: (self.joined_at[(household_id, ur[0])], ur[0]))
+        return dict(found)
+
+    def remove_member(
+        self,
+        household_id: str,
+        user_id: str,
+        *,
+        hand_over: bool = False,
+        removed_by: str | None = None,
+    ) -> bool:
+        h = UUID(household_id)
+        if h not in self.households:
+            raise NotFoundError("Household not found")
+        roles = self._roles(h)
+        if removed_by is not None and removed_by != user_id and roles.get(removed_by) != "owner":
+            raise ServiceError(403, "Only the owner can remove members")
+        if user_id not in roles:
+            raise NotFoundError("Member not found")
+        others = [other for other in roles if other != user_id]
+        if not others:
+            # ON DELETE CASCADE
+            del self.households[h]
+            self.memberships = {k: r for k, r in self.memberships.items() if k[0] != h}
+            self.invites = {c: i for c, i in self.invites.items() if i.household_id != h}
+            self.receipts = {k: r for k, r in self.receipts.items() if r.household_id != h}
+            return True
+        if roles[user_id] == "owner" and not hand_over:
+            raise ServiceError(409, "The owner must hand over the role before leaving")
+        del self.memberships[(h, user_id)]
+        if roles[user_id] == "owner":
+            self.memberships[(h, others[0])] = "owner"
+        return False
+
+    def transfer_owner(self, household_id: str, owner_id: str, new_owner_id: str) -> None:
+        h = UUID(household_id)
+        if h not in self.households:
+            raise NotFoundError("Household not found")
+        roles = self._roles(h)
+        if roles.get(owner_id) != "owner":
+            raise ServiceError(403, "Only the owner can hand over the role")
+        if new_owner_id not in roles:
+            raise NotFoundError("Member not found")
+        if new_owner_id != owner_id:
+            self.memberships[(h, owner_id)] = "member"
+            self.memberships[(h, new_owner_id)] = "owner"
+
     # bonbon.users.repo
     def sync_user(self, user_id: str, display_name: str, email: str | None) -> None:
         self.users[user_id] = (display_name, email)
