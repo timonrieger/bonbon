@@ -16,4 +16,4 @@ Each team member has an AWS Academy Learner Lab account with 50 USD of credit. T
 
 - Per-function least privilege is impossible; we document it as a known limitation in the report.
 - A pre-commit hook (`.mise/tasks/check-no-iam.py`) blocks IAM resources.
-- Credentials can't be stored in GitHub, so CI doesn't deploy (see 0004).
+- Credentials expire with the lab session and no IAM role for GitHub (OIDC) is possible, so CI doesn't deploy (see [0009](0009-manual-deploys.md)).

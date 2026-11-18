@@ -4,8 +4,8 @@
 
 ## Done when
 
-- [ ] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense)
-- [ ] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
+- [x] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense; accuracy is checked with the test set below)
+- [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
 - [ ] Manual correction of items, prices and categories (optional: categories only)
 - [ ] Corrections only update the database; nothing is trained
@@ -60,16 +60,24 @@
    data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
 3. Remove the `disabled` from the save button
 
-### Backend (`packages/api`) — @Dam-Mil
+### Backend (`packages/api`) — @nosernoel, @Dam-Mil
 
-**Implemented**:
+**Implemented** (#22): `bonbon/receipts/expense.py` turns the AnalyzeExpense JSON into what the database worker stores. Tested with a real Migros receipt (`tests/data/textract_migros.json`). Nothing is guessed; what can't be read stays `NULL` until a member corrects it.
+
+- Store: `VENDOR_NAME` (or `NAME` in the vendor group). Headers containing Migros, Coop, Aldi or Lidl become exactly that name, so «MIGROS» and «Genossenschaft Migros Ostschweiz» add up in the report per store; any other store keeps its first line as printed.
+- Date: `INVOICE_RECEIPT_DATE` as `17.11.2026`, `17.11.26`, `17/11/2026` or ISO, a time after it is ignored; anything else is `NULL`.
+- Total: the first `TOTAL` in CHF, else `AMOUNT_PAID`. Totals in another currency (Migros prints «Total in EUR») are skipped by Textract's `Currency` code or the label. Never summed up from the items.
+- Amounts in Rappen, also `CHF 12.50`, `12,50`, `1'234.50` and deductions as `-1.20` or `20.00-`.
+- Items: name from `ITEM`, else the last line of `EXPENSE_ROW`; `PRICE` is the line amount, `UNIT_PRICE` stays as printed (per kg for weighed goods, before the reduction for reduced items); quantity 1 if missing. Rows without a price are left out.
+- Category: `categorize()` from `bonbon/receipts/categories.py` (#42), called before the transaction because it loads its rules from the database once per container.
+
+**Implemented** (@Dam-Mil):
 - Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
 - Categorization: fixed category list + keyword rules seeded in migration 0006, and
   `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
   (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
 
 **Planned**:
-- Database Lambda writes items with their category via `categorize()` (#38)
 - Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
 ## Rules
@@ -77,6 +85,8 @@
 - Every member of the household can correct any receipt, not only the uploader.
 
 ## Notes
+
+- Spending per category adds up the items, the month and store totals add up the receipt totals. They can differ: Textract doesn't return vouchers such as Migros Cumulus-Bons as line items (on the test receipt the items add up to 215.70, the total is 185.70). We keep both as read and check how often this happens with the test set (#24).
 
 - Textract is confirmed available in the Learner Lab (SW5 test, ~3.3 s per call, 5 calls/s limit).
 - The external AI API is only a fallback, with its key in SSM Parameter Store and a strict cost limit. Don't build it unless the test set shows Textract isn't good enough.

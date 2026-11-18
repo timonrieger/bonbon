@@ -14,3 +14,4 @@ Template: copy an existing file. Sections: **Context**, **Decision**, **Conseque
 | [0006](0006-postgresql-on-rds.md)           | PostgreSQL on RDS instead of DynamoDB                                    |
 | [0007](0007-worker-split-and-db-credentials.md) | Worker split and database credentials without NAT                        |
 | [0008](0008-frontend-on-amplify-hosting.md) | Frontend on Amplify Hosting, because CloudFront is blocked in the Learner Lab |
+| [0009](0009-manual-deploys.md) | Deploys stay manual, no deployment from GitHub Actions |

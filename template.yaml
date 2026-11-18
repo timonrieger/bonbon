@@ -275,6 +275,24 @@ Resources:
             RestApiId: !Ref Api
             Path: /households/join
             Method: POST
+        LeaveHousehold:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/members/me
+            Method: DELETE
+        RemoveMember:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/members/{user_id}
+            Method: DELETE
+        TransferOwnership:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /households/{household_id}/owner
+            Method: PUT
 
   ReceiptsFunction:
     Type: AWS::Serverless::Function

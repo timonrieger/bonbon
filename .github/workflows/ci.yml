@@ -13,8 +13,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# No deploys from CI: Learner Lab credentials expire every few hours, so they
-# can't live in GitHub secrets. Prod is deployed with `mise run deploy:prod`.
+# No deploys from CI: no IAM role for GitHub (OIDC) in the Learner Lab, and lab
+# credentials expire with the session (ADR 0009). See docs/guides/deploy.md.
 jobs:
   checks:
     runs-on: ubuntu-latest

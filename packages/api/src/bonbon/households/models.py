@@ -32,6 +32,11 @@ class MemberList(BaseModel):
     members: list[Member]
 
 
+class TransferOwnerRequest(BaseModel):
+    # A Cognito user id ('sub') from listMembers.
+    user_id: str = Field(min_length=1, max_length=128)
+
+
 class InviteCode(BaseModel):
     # Shown once: only its hash is stored. Formatted as XXXX-XXXX; joining ignores case,
     # dashes and spaces.

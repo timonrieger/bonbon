@@ -202,6 +202,307 @@
         }
       }
     },
+    "/households/{household_id}/members/me": {
+      "delete": {
+        "tags": [
+          "households"
+        ],
+        "summary": "DELETE /households/{household_id}/members/me",
+        "operationId": "leaveHousehold",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Left; if the caller was the last member, the household is deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Return"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The owner can't leave while other members remain; hand over the role first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/members/{user_id}": {
+      "delete": {
+        "tags": [
+          "households"
+        ],
+        "summary": "DELETE /households/{household_id}/members/{user_id}",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            },
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Removed; their access ends immediately",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Return"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the owner can remove other members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, the caller is not a member, or the user is not one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Removing oneself as the owner while other members remain, as in leaving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/households/{household_id}/owner": {
+      "put": {
+        "tags": [
+          "households"
+        ],
+        "summary": "PUT /households/{household_id}/owner",
+        "operationId": "transferOwnership",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Handed over; the members with their new roles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, the caller is not a member, or the user is not one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the owner can hand over the role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/households/{household_id}/receipts": {
       "get": {
         "tags": [
@@ -1350,6 +1651,21 @@
           "total_rappen"
         ],
         "title": "StoreTotal"
+      },
+      "TransferOwnerRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "TransferOwnerRequest"
       },
       "ValidationError": {
         "properties": {

@@ -28,6 +28,7 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     """Replace every SQL function with an in-memory fake (see tests/fakes.py)."""
     from bonbon import auth, db
     from bonbon.households import repo as households
+    from bonbon.receipts import categories
     from bonbon.receipts import repo as receipts
     from bonbon.reports import repo as reports
     from bonbon.users import repo as users
@@ -44,9 +45,14 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(households, "list_members", fake.list_members)
     monkeypatch.setattr(households, "create_invite", fake.create_invite)
     monkeypatch.setattr(households, "join", fake.join)
+    monkeypatch.setattr(households, "remove_member", fake.remove_member)
+    monkeypatch.setattr(households, "transfer_owner", fake.transfer_owner)
     monkeypatch.setattr(receipts, "create", fake.create_receipt)
     monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)
     monkeypatch.setattr(receipts, "get", fake.get_receipt)
+    monkeypatch.setattr(receipts, "finish_extracted", fake.finish_extracted)
+    monkeypatch.setattr(receipts, "finish_failed", fake.finish_failed)
+    monkeypatch.setattr(categories, "_rules", fake.rules)
     monkeypatch.setattr(reports, "monthly", fake.monthly_report)
     monkeypatch.setattr(reports, "trend", fake.spending_trend)
     monkeypatch.setattr(users, "sync", fake.sync_user)

@@ -9,5 +9,6 @@
 | [glossary.md](glossary.md) | German ↔ English terms | Writing code or prompts |
 | [guides/setup.md](guides/setup.md) | First-time setup, step by step | Day one |
 | [guides/workflow.md](guides/workflow.md) | Issue → agent → PR → merge | Every task |
+| [guides/deploy.md](guides/deploy.md) | Deploying prod by hand | Infra owner, every release |
 
 These docs are also the raw material for the final report (30 % of the grade). Keep architecture, features and decisions accurate as you go and the report mostly writes itself.

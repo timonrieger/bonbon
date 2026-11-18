@@ -40,6 +40,9 @@ export type InviteCode = {
     code: string;
     expires_at: string;
 };
+export type TransferOwnerRequest = {
+    user_id: string;
+};
 export type ReceiptSummary = {
     id: string;
     status: Status;
@@ -183,6 +186,102 @@ export function createInvite({ householdId }: {
         ...opts,
         method: "POST"
     }));
+}
+/**
+ * DELETE /households/{household_id}/members/me
+ */
+export function leaveHousehold({ householdId }: {
+    householdId: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 204;
+        data: null;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 409;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/members/me`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * DELETE /households/{household_id}/members/{user_id}
+ */
+export function removeMember({ householdId, userId }: {
+    householdId: string;
+    userId: string;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 204;
+        data: null;
+    } | {
+        status: 403;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 409;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/members/${encodeURIComponent(userId)}`, {
+        ...opts,
+        method: "DELETE"
+    }));
+}
+/**
+ * PUT /households/{household_id}/owner
+ */
+export function transferOwnership({ householdId, transferOwnerRequest }: {
+    householdId: string;
+    transferOwnerRequest: TransferOwnerRequest;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: MemberList;
+    } | {
+        status: 403;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/owner`, oazapfts.json({
+        ...opts,
+        method: "PUT",
+        body: transferOwnerRequest
+    })));
 }
 /**
  * GET /households/{household_id}/receipts
