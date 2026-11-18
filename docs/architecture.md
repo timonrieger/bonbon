@@ -26,6 +26,7 @@ flowchart LR
   worker --> results[Results SQS + DLQ]
   results --> dbworker
   dbworker -.->|S3 gateway endpoint| s3
+  fns -.->|delete household files| s3
   worker --> sns[SNS e-mail]
 ```
 
@@ -33,13 +34,13 @@ flowchart LR
 |---|---|---|
 | Cognito, API Gateway | scaffolded | @timonrieger, @nosernoel |
 | RDS PostgreSQL, security groups, secrets, migration Lambda (`mise run db:migrate`) | scaffolded | @nosernoel |
-| Households API (list, create, get, members) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
+| Households API (list, create, get, members, invites, leave, remove member, hand over owner role) on PostgreSQL | scaffolded (reference pattern) | @nosernoel |
 | S3 receipts bucket (lifecycle, S3 → SQS notification) | scaffolded | @timonrieger |
 | Presigned upload endpoint (`createReceipt`, creates the `receipts` row) | scaffolded | @nosernoel |
 | SQS + DLQ, worker Lambda | implemented (Textract Lambda, #41) | @timonrieger, @Dam-Mil |
 | Worker split: results queue + DLQ, DB Lambda inside the VPC ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#22) | @timonrieger, @Dam-Mil |
 | Worker split: Textract Lambda sends to the results queue ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#41) | @timonrieger, @Dam-Mil |
-| S3 gateway endpoint for the DB Lambda, created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#27) | @timonrieger |
+| S3 gateway endpoint for the DB Lambda and the households Lambda (deleting a household's files), created only if the default VPC has none ([0007](decisions/0007-worker-split-and-db-credentials.md)) | implemented (#27) | @timonrieger |
 | Worker logic: Textract, categorization, status | implemented (#41, #23, #22); rules still to tune (#24) | @Dam-Mil |
 | Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | implemented | @nosernoel |

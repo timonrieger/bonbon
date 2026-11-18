@@ -48,6 +48,41 @@ def put_json(key: str, data: bytes) -> None:
     _s3().put_object(Bucket=bucket_name(), Key=key, Body=data, ContentType="application/json")
 
 
+def household_prefixes(household_id: str) -> tuple[str, str]:
+    """Every key of a household starts with one of these: its receipt files and Textract results."""
+    return f"households/{household_id}/", f"textract-results/{household_id}/"
+
+
+def delete_household_files(household_id: str) -> tuple[int, list[str]]:
+    """Delete all files of a household from the bucket.
+
+    Returns how many were deleted and the keys S3 refused to delete: delete_objects answers
+    200 even when single objects fail and lists them under Errors.
+
+    Called by the households Lambda (inside the VPC, through the S3 gateway endpoint) after the
+    household is gone from the database. Short timeouts, so an unreachable S3 fails the cleanup
+    within seconds instead of the whole 15 s request.
+    """
+    s3 = _s3_cleanup()
+    deleted = 0
+    failed: list[str] = []
+    for prefix in household_prefixes(household_id):
+        for page in s3.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket_name(), Prefix=prefix
+        ):
+            # A page has at most 1000 keys, which is also the limit of one delete_objects call.
+            keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if keys:
+                # Quiet: the response lists only the failures.
+                response = s3.delete_objects(
+                    Bucket=bucket_name(), Delete={"Objects": keys, "Quiet": True}
+                )
+                errors = [error["Key"] for error in response.get("Errors", [])]
+                failed += errors
+                deleted += len(keys) - len(errors)
+    return deleted, failed
+
+
 @cache
 def _s3():
     # Every call must fail well within the workers' 30 s Lambda timeout, also without a route to
@@ -60,6 +95,17 @@ def _s3():
             connect_timeout=5,
             read_timeout=10,
             retries={"mode": "standard", "max_attempts": 1},
+        ),
+    )
+
+
+@cache
+def _s3_cleanup():
+    # One retry; connect and read time out fast (see delete_household_files).
+    return boto3.client(
+        "s3",
+        config=Config(
+            connect_timeout=2, read_timeout=5, retries={"max_attempts": 2, "mode": "standard"}
         ),
     )
 
