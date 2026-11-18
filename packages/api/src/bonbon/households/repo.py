@@ -69,8 +69,12 @@ def create_invite(household_id: str) -> InviteCode:
     code = codes.generate()
     with db.transaction() as conn:
         # Household before invite codes, like join() and remove_member(), so this can't
-        # deadlock with the last member leaving.
-        conn.run("SELECT 1 FROM households WHERE id = :id FOR KEY SHARE", id=UUID(household_id))
+        # deadlock with the last member leaving. Gone if that member left since the
+        # membership check.
+        if not conn.run(
+            "SELECT 1 FROM households WHERE id = :id FOR KEY SHARE", id=UUID(household_id)
+        ):
+            raise NotFoundError("Household not found")
         # Codes that can't be used any more are only clutter; nothing reads them.
         conn.run(
             "DELETE FROM invite_codes WHERE household_id = :household_id"
