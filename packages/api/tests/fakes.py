@@ -17,9 +17,15 @@ from bonbon.auth import Role
 from bonbon.households import codes
 from bonbon.households.models import Household, InviteCode, Member
 from bonbon.households.repo import INVITE_VALID_HOURS, MAX_FAILED_JOINS
-from bonbon.receipts.categories import categorize
+from bonbon.receipts.categories import DEFAULT_CATEGORY, categorize
 from bonbon.receipts.expense import ExtractedReceipt
-from bonbon.receipts.models import ReceiptItem, ReceiptStatus, ReceiptSummary, month_bounds
+from bonbon.receipts.models import (
+    ReceiptCorrection,
+    ReceiptItem,
+    ReceiptStatus,
+    ReceiptSummary,
+    month_bounds,
+)
 from bonbon.receipts.repo import WorkerOutcome
 from bonbon.reports.models import (
     CategoryTotal,
@@ -64,6 +70,8 @@ class FakeDatabase:
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
         self.receipts: dict[UUID, FakeReceipt] = {}
+        # Migration 0002 adds 'Sonstiges'; tests add more.
+        self.categories: set[str] = {"Sonstiges"}
         # (keyword, category) like category_rules; empty: every item is 'Sonstiges'
         self.category_rules: list[tuple[str, str]] = []
         # code hash -> invite; only the hash is kept, like in invite_codes
@@ -236,6 +244,33 @@ class FakeDatabase:
         if r is None or r.household_id != UUID(household_id):
             raise NotFoundError("Receipt not found")
         return self._summary(UUID(receipt_id), r), r.items
+
+    def correct_receipt(
+        self, household_id: str, receipt_id: str, correction: ReceiptCorrection
+    ) -> None:
+        self.get_receipt(household_id, receipt_id)  # 404 like the real one
+        r = self.receipts[UUID(receipt_id)]
+        if r.status != "done":
+            raise ServiceError(409, "Only processed receipts can be corrected")
+        given = correction.model_fields_set
+        if correction.items is not None:
+            unknown = sorted({i.category for i in correction.items} - self.categories)
+            if unknown:
+                raise ServiceError(422, f"Unknown category: {', '.join(unknown)}")
+        if "store" in given:
+            r.store = correction.store
+        if "purchase_date" in given:
+            r.purchase_date = correction.purchase_date
+        if "total_rappen" in given:
+            r.total_rappen = correction.total_rappen
+        if correction.items is not None:
+            r.items = sorted(
+                (ReceiptItem(**item.model_dump()) for item in correction.items),
+                key=lambda item: item.position,
+            )
+
+    def category_names(self) -> list[str]:
+        return sorted(self.categories, key=lambda name: (name == DEFAULT_CATEGORY, name))
 
     def _summary(self, receipt_id: UUID, r: FakeReceipt) -> ReceiptSummary:
         same = (r.store, r.purchase_date, r.total_rappen)

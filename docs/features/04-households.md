@@ -13,6 +13,7 @@
 - [x] Failed join attempts are limited per user; API Gateway throttles
 - [x] Every receipt belongs to exactly one household; all reports use that household's data
 - [x] Members can leave, the owner can remove members; access ends immediately
+- [x] The household detail page lets members leave after confirmation and warns about last-member deletion
 - [x] Owner hands over the role before leaving; when the last member leaves, the household, its receipts and images are deleted
 
 ## Rules

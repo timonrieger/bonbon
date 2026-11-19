@@ -26,6 +26,7 @@ All routes check membership (404 for non-members). Amounts are integers in Rappe
 |---|---|---|
 | `GET /households/{household_id}/receipts?month=` | `listReceipts` | All receipts, newest purchase date first (upload date if none, then latest upload); `month` is optional. Uploads whose file never arrived (still `uploaded` after 30 minutes) are left out |
 | `GET /households/{household_id}/receipts/{receipt_id}` | `getReceipt` | Receipt with items and a presigned `image_url` |
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects a `done` receipt, see [02](02-extraction-categorization.md#api-26) |
 | `GET /households/{household_id}/reports/monthly?month=` | `getMonthlyReport` | Total, receipt count, per category, per store, previous month's total |
 | `GET /households/{household_id}/reports/trend?months=6` | `getSpendingTrend` | Total per month, oldest first, months without spending as 0 (`months` 1–24) |
 

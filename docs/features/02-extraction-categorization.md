@@ -7,7 +7,7 @@
 - [x] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense; accuracy is checked with the test set below)
 - [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
-- [ ] Manual correction of items, prices and categories (optional: categories only)
+- [ ] Manual correction of items, prices and categories (optional: categories only); API done (#26), UI wiring open
 - [ ] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
 
@@ -20,12 +20,12 @@
 - `src/components/ReceiptCorrectionForm.tsx`: correction form for auto-extracted receipt data
   - Displays and edits: `store` (text), `purchase_date` (date picker), item rows
   - Each item row edits: `name`, `quantity`, `unit_price_rappen` (CHF), `amount_rappen` (CHF), `category`
-  - `total_rappen`, `status`, `image_url`, `position` are read-only (computed or backend-owned)
+  - Displays `total_rappen` as read-only and preserves each item's position
   - Local validation: empty names/categories, invalid amounts, malformed date
   - Error messages shown per field with `role="alert"`; form re-validates on change after first submit attempt
   - `onSave(correction: ReceiptCorrection)` callback with the validated values converted
     back to API units (Rappen, numbers, `null`) — parent is responsible for the PATCH call
-  - Save button is `disabled` until PATCH endpoint exists; no fake save, no mock
+  - Save stays disabled pending integration with the correction API
   - Keyboard-navigable; each input has an associated `<label>` via `useId()`-based IDs
   - Re-initialises when `receipt.id` changes (e.g. navigation between receipts); a refetch
     of the same receipt keeps unsaved edits
@@ -35,7 +35,30 @@
 
 **Read-only detail view:** `src/pages/ReceiptPage.tsx` uses `getReceipt` to show the extracted receipt fields, uploader, original image and item categories. While extraction is pending, the detail view refreshes automatically and displays new fields and items as soon as the API returns them. It keeps the loaded image preview while updating the link to the original.
 
-**Correction integration is planned:** Wire the existing form into the detail page using the generated PATCH request type and the category list when the correction API is available on the target branch.
+**Correction API implemented** (#26, PR #39). Wiring the existing correction form to the API is a separate task.
+
+**To wire up:**
+
+1. Replace the `ReceiptCorrection` stand-in in the component with the generated
+   `ReceiptCorrection` from `@/api`, which supports partial updates and an optional `total_rappen`.
+2. In `ReceiptPage.tsx`, render `<ReceiptCorrectionForm>` with
+   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(updateReceipt)`; the
+   response is the corrected `ReceiptDetail`, so it can go straight into the query cache.
+3. Category field as a `<select>` from `useQuery(listCategories)`.
+4. Remove the `disabled` from the save button.
+5. Allow negative amounts (discounts, vouchers), the API accepts them.
+
+### API (#26)
+
+| Route | Frontend function | What it does |
+|---|---|---|
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Omitted header fields stay unchanged and `null` clears them. An item list replaces all items, including an empty list. Omitted or `null` items stay unchanged. Returns the corrected `ReceiptDetail` |
+| `GET /categories` | `listCategories` | All category names, sorted, «Sonstiges» last; the same for every household |
+
+- 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
+- Item names and categories are trimmed and must not be empty; quantity > 0 (three decimals kept); positions unique; amounts may be negative.
+- The total is never computed from the items: vouchers are often not line items (see Notes).
+- One transaction; the reports sum at query time, so the dashboard shows the correction immediately.
 
 ### Backend (`packages/api`) — @nosernoel, @Dam-Mil
 

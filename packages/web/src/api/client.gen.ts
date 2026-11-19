@@ -88,6 +88,20 @@ export type ReceiptDetail = {
     image_url: string;
     items: ReceiptItem[];
 };
+export type ItemCorrection = {
+    position: number;
+    name: string;
+    quantity: number;
+    unit_price_rappen?: number | null;
+    amount_rappen: number;
+    category: string;
+};
+export type ReceiptCorrection = {
+    store?: string | null;
+    purchase_date?: string | null;
+    total_rappen?: number | null;
+    items?: ItemCorrection[] | null;
+};
 export type CategoryTotal = {
     category: string;
     total_rappen: number;
@@ -119,6 +133,9 @@ export type CreateHouseholdRequest = {
 };
 export type JoinRequest = {
     code: string;
+};
+export type CategoryList = {
+    categories: string[];
 };
 /**
  * GET /households/{household_id}
@@ -357,6 +374,38 @@ export function getReceipt({ householdId, receiptId }: {
     }));
 }
 /**
+ * PATCH /households/{household_id}/receipts/{receipt_id}
+ */
+export function updateReceipt({ householdId, receiptId, receiptCorrection }: {
+    householdId: string;
+    receiptId: string;
+    receiptCorrection: ReceiptCorrection;
+}, opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: ReceiptDetail;
+    } | {
+        status: 404;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 409;
+        data: {
+            statusCode: number;
+            message: string;
+        };
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>(`/households/${encodeURIComponent(householdId)}/receipts/${encodeURIComponent(receiptId)}`, oazapfts.json({
+        ...opts,
+        method: "PATCH",
+        body: receiptCorrection
+    })));
+}
+/**
  * GET /households/{household_id}/reports/monthly
  */
 export function getMonthlyReport({ householdId, month }: {
@@ -473,6 +522,20 @@ export function joinHousehold({ joinRequest }: {
         method: "POST",
         body: joinRequest
     })));
+}
+/**
+ * GET /categories
+ */
+export function listCategories(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 200;
+        data: CategoryList;
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>("/categories", {
+        ...opts
+    }));
 }
 export enum MyRole {
     Owner = "owner",

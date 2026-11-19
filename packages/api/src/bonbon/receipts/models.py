@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 # 'uploaded' lasts until the worker is done; the app shows it as "in Bearbeitung".
 ReceiptStatus = Literal["uploaded", "done", "failed", "duplicate"]
@@ -73,3 +73,45 @@ class ReceiptDetail(ReceiptSummary):
     # Presigned GET URL for the original photo or PDF, valid for a few minutes.
     image_url: str
     items: list[ReceiptItem]
+
+
+# Bounds for amounts in corrections: well inside the database's integer, far beyond any receipt.
+# Negative amounts are allowed: discounts and vouchers are printed as deductions.
+Rappen = Annotated[int, Field(ge=-100_000_000, le=100_000_000)]
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
+class ItemCorrection(BaseModel):
+    position: int = Field(ge=1)
+    name: Text
+    # numeric(10, 3) in the database, so at most three decimals are kept.
+    quantity: float = Field(gt=0, lt=10_000_000)
+    unit_price_rappen: Rappen | None = None
+    amount_rappen: Rappen
+    # A name from listCategories.
+    category: Text
+
+
+class ReceiptCorrection(BaseModel):
+    """Fields a member corrects (docs/features/02). Left out = unchanged, null = cleared.
+
+    `items` replaces all items of the receipt; left out or null keeps them. The total is not
+    computed from the items: vouchers are often no line items, so the two can differ.
+    """
+
+    store: Text | None = None
+    purchase_date: date | None = None
+    total_rappen: Rappen | None = None
+    items: list[ItemCorrection] | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def positions_are_unique(self) -> Self:
+        positions = [item.position for item in self.items or []]
+        if len(positions) != len(set(positions)):
+            raise ValueError("Item positions must be unique")
+        return self
+
+
+class CategoryList(BaseModel):
+    # Names, sorted; the same for every household.
+    categories: list[str]
