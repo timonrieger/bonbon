@@ -93,7 +93,20 @@ export function HouseholdPage() {
   }
 
   if (household.isPending) return <p>Laden…</p>;
-  if (household.isError) return <p className="text-red-600">{household.error.message}</p>;
+  if (household.isError) {
+    if (household.error instanceof HttpError && household.error.status === 404) {
+      return (
+        <div className="text-red-600">
+          <p>Dieser Haushalt ist nicht verfügbar.</p>
+          <Link to="/" className="underline">
+            Zu meinen Haushalten
+          </Link>
+        </div>
+      );
+    }
+
+    return <p className="text-red-600">{household.error.message}</p>;
+  }
 
   return (
     <div className="flex flex-col gap-6">
