@@ -8,6 +8,7 @@ import {
   useRef,
   useState
 } from 'react';
+import { bindApiSession } from '@/api';
 
 const UploadSignalContext = createContext<(() => AbortSignal) | null>(null);
 
@@ -21,21 +22,56 @@ export function AuthenticatedSession({ children }: { children: ReactNode }) {
   const { route, user } = useAuthenticator((context) => [context.route, context.user]);
   if (route !== 'authenticated' || !user) return null;
 
-  return <SessionQueries key={user.userId}>{children}</SessionQueries>;
+  return (
+    <SessionQueries key={user.userId} subject={user.userId}>
+      {children}
+    </SessionQueries>
+  );
 }
 
-function SessionQueries({ children }: { children: ReactNode }) {
+function SessionQueries({ children, subject }: { children: ReactNode; subject: string }) {
   const [queryClient] = useState(() => new QueryClient());
   const uploads = useRef<AbortController | null>(null);
+  const [invalidated, setInvalidated] = useState(false);
 
   useLayoutEffect(() => {
     const controller = new AbortController();
     uploads.current = controller;
+    function invalidate() {
+      controller.abort();
+      queryClient.clear();
+      setInvalidated(true);
+    }
+    const unbind = bindApiSession({ subject, signal: controller.signal, invalidate });
+    // Amplify's default Cognito token storage shares the active user across tabs.
+    const lastUserKey = `CognitoIdentityServiceProvider.${import.meta.env.VITE_USER_POOL_CLIENT_ID}.LastAuthUser`;
+    function handleStorage(event: StorageEvent) {
+      if (
+        event.storageArea === window.localStorage &&
+        (event.key === null || event.key === lastUserKey)
+      ) {
+        invalidate();
+      }
+    }
+    window.addEventListener('storage', handleStorage);
     return () => {
+      window.removeEventListener('storage', handleStorage);
+      unbind();
       controller.abort();
       queryClient.clear();
     };
-  }, [queryClient]);
+  }, [queryClient, subject]);
+
+  if (invalidated) {
+    return (
+      <main className="mx-auto max-w-3xl p-4">
+        <p role="alert">Die Anmeldung hat sich geändert. Lade die Seite neu, um fortzufahren.</p>
+        <button type="button" className="mt-3 underline" onClick={() => window.location.reload()}>
+          Seite neu laden
+        </button>
+      </main>
+    );
+  }
 
   function getUploadSignal() {
     if (!uploads.current) throw new Error('The authenticated session has not mounted.');

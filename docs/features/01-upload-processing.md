@@ -38,12 +38,14 @@ The core of the architecture: the upload ends in S3, everything after runs async
   `createReceipt` (generated, from `@/api`), then `uploadToS3`; shows success and error
   messages and clears the selection after a successful upload
 - `src/api/receiptImage.ts`: validates the original file type and size, checks its byte signature and decodes the image locally. Images up to 500 KiB keep their original bytes. Larger images use orientation-aware decoding and a white background when converting to JPEG. Downscaling targets a 2800 px long edge while retaining at least 1400 px on the short edge when the original allows it, with no upscaling. The size target is flexible so long or detailed receipts can retain more pixels. If re-encoding saves less than 10%, the validated original is used.
-- The upload signs the prepared file's actual size and type. Decode or encode failures show an error before the API creates a receipt. Changing households during preparation or signing out prevents a new upload from starting. The UI shows preparation progress and reports the size reduction after upload.
+- The upload signs the prepared file's actual size and type. Decode or encode failures show an error before the API creates a receipt. Changing households during preparation or signing out prevents a new upload from starting. The UI shows preparation progress and reports the size reduction after upload. Leaving a household in the same session is blocked until an active upload settles. Cancelling the browser request cannot undo an upload accepted by S3.
 
 - The household receipt list refreshes after a successful upload. The list and detail views share German status badges for `uploaded`, `done`, `failed` and `duplicate`.
 
 - The open receipt list polls every 3 seconds while any receipt is awaiting processing. The open detail view polls on the same interval while its receipt is `uploaded`. Polling pauses in hidden tabs and stops when the receipt reaches a final status or the API denies access. Transient errors keep the last successful response visible and slow polling to every 15 seconds.
 - The backend omits still-`uploaded` records from the list after 30 minutes. The list allows a 15-second grace period for that final refresh. Direct detail links can still return these records, so detail polling stops based on `created_at` at 30 minutes. If the list refresh immediately after upload fails, the page attempts recovery for up to one minute.
+
+**Browser memory:** The 5 MB file limit bounds compressed bytes. Decoding can allocate a much larger bitmap before resizing. Test long and high-resolution receipts on memory-constrained mobile devices.
 
 **Still planned:**
 - PDF support (single-page only; rejected with a clear error message)
