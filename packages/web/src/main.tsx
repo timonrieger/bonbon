@@ -2,12 +2,12 @@ import '@aws-amplify/ui-react/styles.css';
 import './index.css';
 
 import { Authenticator } from '@aws-amplify/ui-react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Amplify } from 'aws-amplify';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { App } from '@/App';
+import { AuthenticatedSession } from '@/components/AuthenticatedSession';
 
 Amplify.configure({
   Auth: {
@@ -18,17 +18,15 @@ Amplify.configure({
   }
 });
 
-const queryClient = new QueryClient();
-
 // biome-ignore lint/style/noNonNullAssertion: index.html always has #root
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Authenticator>
-      <QueryClientProvider client={queryClient}>
+      <AuthenticatedSession>
         <BrowserRouter>
           <App />
         </BrowserRouter>
-      </QueryClientProvider>
+      </AuthenticatedSession>
     </Authenticator>
   </StrictMode>
 );

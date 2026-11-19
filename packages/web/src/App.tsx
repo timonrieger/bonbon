@@ -5,6 +5,7 @@ import { DeleteAccountDialog } from '@/components/DeleteAccountDialog';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { HomePage } from '@/pages/HomePage';
 import { HouseholdPage } from '@/pages/HouseholdPage';
+import { ReceiptPage } from '@/pages/ReceiptPage';
 
 export function App() {
   const { signOut, user } = useAuthenticator((context) => [context.user]);
@@ -39,6 +40,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/households/:householdId" element={<HouseholdPage />} />
+        <Route path="/households/:householdId/receipts/:receiptId" element={<ReceiptPage />} />
         <Route path="/households/:householdId/dashboard" element={<DashboardPage />} />
       </Routes>
 

@@ -5,28 +5,7 @@
  * See docs/features/01-upload-processing.md.
  */
 import { useId, useState } from 'react';
-import { ContentType } from '@/api';
-
-// PDF is allowed by the API but not offered yet (needs single-page check and resizing).
-const ACCEPTED_TYPES: string[] = [ContentType.ImageJpeg, ContentType.ImagePng];
-
-const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function validate(file: File): string | null {
-  if (!ACCEPTED_TYPES.includes(file.type)) {
-    return 'Nur JPG- und PNG-Dateien sind erlaubt.';
-  }
-  if (file.size > MAX_SIZE_BYTES) {
-    return `Die Datei ist zu gross (${formatBytes(file.size)}). Maximal erlaubt: 5 MB.`;
-  }
-  return null;
-}
+import { formatBytes, RECEIPT_IMAGE_TYPES, validateReceiptImage } from '@/api/receiptImage';
 
 export interface ReceiptFilePickerProps {
   /** The selected, already validated file; null when nothing is selected. */
@@ -51,9 +30,9 @@ export function ReceiptFilePicker({
 
     if (!file) return;
 
-    const validationError = validate(file);
-    if (validationError) {
-      setError(validationError);
+    const validation = validateReceiptImage(file);
+    if ('error' in validation) {
+      setError(validation.error);
       onChange(null);
       return;
     }
@@ -75,7 +54,7 @@ export function ReceiptFilePicker({
       <input
         id={inputId}
         type="file"
-        accept={ACCEPTED_TYPES.join(',')}
+        accept={RECEIPT_IMAGE_TYPES.join(',')}
         disabled={disabled}
         className="sr-only"
         aria-label="Kassenzettel-Foto auswählen"

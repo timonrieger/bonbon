@@ -33,32 +33,9 @@
     PATCH body live in the component file
 - `src/api/receipts.ts`: added the `formatRappen` helper
 
-**Blocked on backend — needed for full integration:**
+**Read-only detail view:** `src/pages/ReceiptPage.tsx` uses `getReceipt` to show the extracted receipt fields, uploader, original image and item categories. While extraction is pending, the detail view refreshes automatically and displays new fields and items as soon as the API returns them. It keeps the loaded image preview while updating the link to the original.
 
-1. ~~`GET /households/{id}/receipts/{id}` must return real data~~: done (#18). It returns
-   the generated `ReceiptDetail` type the form takes; items stay empty until the worker writes them.
-2. A `PATCH /households/{id}/receipts/{id}` endpoint is needed to save corrections.
-   The request body type is not yet designed. Suggested shape (coordinate with @Dam-Mil):
-   ```json
-   {
-     "store": "string | null",
-     "purchase_date": "YYYY-MM-DD | null",
-     "items": [
-       { "position": 1, "name": "…", "quantity": 1.0,
-         "unit_price_rappen": 150, "amount_rappen": 150, "category": "…" }
-     ]
-   }
-   ```
-3. Available categories as an API list (`GET /categories` or inline in `ReceiptDetail`)
-   would let the category field become a `<select>` instead of a free-text input.
-   The fixed category list and keyword rules are seeded by migration 0006 (#42).
-
-**To wire up once PATCH is deployed:**
-
-1. Run `mise run generate` — replace `ReceiptCorrection` with the generated PATCH request type
-2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
-   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(patchReceipt)`
-3. Remove the `disabled` from the save button
+**Correction integration is planned:** Wire the existing form into the detail page using the generated PATCH request type and the category list when the correction API is available on the target branch.
 
 ### Backend (`packages/api`) — @nosernoel, @Dam-Mil
 
