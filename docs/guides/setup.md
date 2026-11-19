@@ -45,6 +45,7 @@ This creates `bonbon-dev` in your account (API, login, PostgreSQL database), app
 `Terminal → Run Build Task…` (⇧⌘B / Ctrl+Shift+B) runs **Dev: start**:
 
 - The app runs at <http://localhost:5173>. Create an account; the verification code arrives by e-mail.
+- The port is fixed: your stack's CORS rules allow only this origin. If 5173 is taken, Vite stops instead of switching ports; close whatever is using it.
 - Backend changes are pushed to your stack automatically while it runs.
 
 Stop it with Ctrl+C in the terminal.

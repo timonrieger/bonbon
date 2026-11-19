@@ -27,6 +27,7 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 - No RDS Proxy. Each Lambda container reuses one connection; the sum of reserved concurrency of all database Lambdas stays well below 79 (today 51).
 - Schema changes are numbered SQL files in `packages/api/src/bonbon/migrations/`, each applied in one transaction and recorded in `schema_migrations`. A migration Lambda inside the VPC runs them; `mise run db:migrate` invokes it, and `mise run stack:up` calls that automatically. CI can't reach the private database and doesn't deploy anyway (0004).
 - Dev stacks: `BackupRetentionPeriod: 0`, `DeletionProtection: false`, `DeletionPolicy`/`UpdateReplacePolicy: Delete`.
+- Prod (added 2026-11-17, after the first prod deploy): `DeletionPolicy`/`UpdateReplacePolicy: Snapshot` and `BackupRetentionPeriod: 7`, chosen per stage with `!If IsProd`. That needs the `AWS::LanguageExtensions` transform, because plain CloudFormation allows no functions in `DeletionPolicy`. Tested in the Learner Lab: backup retention > 0 and manual snapshots work.
 
 ## Consequences
 
@@ -35,9 +36,9 @@ Feasibility tests in the Learner Lab (2026-11-02, 2026-11-03 and 2026-11-06):
 - Switching from `default` to the own subnet group replaces the database. Because the instance has a fixed name, an existing dev stack has to be deleted (`mise run stack:down`) and deployed again (`mise run stack:up`) once.
 - Lambdas in the VPC have no internet access; anything that calls Textract, SNS or Secrets Manager stays outside (0007).
 - Deleting a stack takes up to about 20 minutes because AWS releases the Lambda network interfaces slowly; the security groups wait for that.
+- Deleting `bonbon-prod` leaves a final snapshot (storage cost until someone deletes it); restoring means a new instance from that snapshot. Point-in-time restore covers the last 7 days.
 - The database is a single instance that doesn't scale automatically. Multi-AZ, read replicas and RDS Proxy are the production upgrade path and are documented as a known limitation.
 
 ## Open
 
-- **Prod:** switch `DeletionPolicy` and `UpdateReplacePolicy` to `Snapshot` and set a backup retention before the first prod deploy with the database.
 - **Tests:** moto can't fake PostgreSQL and Docker is ruled out (0004). For now, route tests replace the repo layer with in-memory fakes (`tests/fakes.py`), so the SQL itself is only exercised on a dev stack. Candidate for later: a pip-installable PostgreSQL such as `pgserver` as a dev dependency.

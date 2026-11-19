@@ -4,7 +4,11 @@
 # requires-python = ">=3.14"
 # dependencies = []
 # ///
-"""Write packages/web/.env.local from a deployed stack's outputs. Usage: mise run env [stack]"""
+"""Write packages/web/.env.local from a deployed stack's outputs. Usage: mise run env [stack] [file]
+
+deploy:web passes `.env.production.local`, which `vite build` prefers over `.env.local`, so a
+prod build never touches the dev settings.
+"""
 
 import json
 import subprocess
@@ -12,6 +16,7 @@ import sys
 from pathlib import Path
 
 stack = sys.argv[1] if len(sys.argv) > 1 else "bonbon-dev"
+filename = sys.argv[2] if len(sys.argv) > 2 else ".env.local"
 result = subprocess.run(
     [
         "aws",
@@ -37,6 +42,6 @@ env = {
     "VITE_USER_POOL_ID": outputs["UserPoolId"],
     "VITE_USER_POOL_CLIENT_ID": outputs["UserPoolClientId"],
 }
-path = Path(__file__).resolve().parents[2] / "packages" / "web" / ".env.local"
+path = Path(__file__).resolve().parents[2] / "packages" / "web" / filename
 path.write_text("".join(f"{k}={v}\n" for k, v in env.items()))
 print(f"Wrote {path}")
