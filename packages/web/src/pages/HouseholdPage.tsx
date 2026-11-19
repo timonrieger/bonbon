@@ -15,6 +15,7 @@ import {
 } from '@/api';
 import { uploadToS3 } from '@/api/receipts';
 import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
+import { householdRoleLabel } from '@/householdRoleLabel';
 
 export function HouseholdPage() {
   // biome-ignore lint/style/noNonNullAssertion: the route always has :householdId
@@ -98,7 +99,9 @@ export function HouseholdPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">{household.data.name}</h1>
-        <p className="text-sm text-gray-600">Deine Rolle: {household.data.my_role}</p>
+        <p className="text-sm text-gray-600">
+          Deine Rolle: {householdRoleLabel(household.data.my_role)}
+        </p>
         <Link
           to={`/households/${householdId}/dashboard`}
           className="mt-2 inline-block text-sm underline"
@@ -137,7 +140,7 @@ export function HouseholdPage() {
             {members.data.members.map((member) => (
               <li key={member.user_id} className="flex justify-between gap-4 px-3 py-2 text-sm">
                 <span>{member.display_name}</span>
-                <span className="text-gray-600">{member.role}</span>
+                <span className="text-gray-600">{householdRoleLabel(member.role)}</span>
               </li>
             ))}
           </ul>
@@ -199,7 +202,7 @@ function leaveErrorMessage(error: Error) {
     case 404:
       return 'Du hast keinen Zugriff mehr auf diesen Haushalt.';
     case 409:
-      return 'Als Owner musst du zuerst die Owner-Rolle an ein anderes Mitglied übergeben, bevor du den Haushalt verlassen kannst.';
+      return 'Du musst zuerst die Haushaltsleitung an ein anderes Mitglied übergeben, bevor du den Haushalt verlassen kannst.';
     default:
       return 'Haushalt konnte nicht verlassen werden. Bitte versuche es erneut.';
   }

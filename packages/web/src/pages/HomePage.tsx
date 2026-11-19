@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { createHousehold, joinHousehold, listHouseholds } from '@/api';
+import { householdRoleLabel } from '@/householdRoleLabel';
 
 function joinErrorMessage(error: Error) {
   if (!(error instanceof HttpError)) {
@@ -81,7 +82,9 @@ export function HomePage() {
                 <Link to={`/households/${household.id}`} className="font-medium underline">
                   {household.name}
                 </Link>
-                <span className="text-sm text-gray-600">Deine Rolle: {household.my_role}</span>
+                <span className="text-sm text-gray-600">
+                  Deine Rolle: {householdRoleLabel(household.my_role)}
+                </span>
               </li>
             ))}
           </ul>
