@@ -8,10 +8,16 @@ import {
   createInvite,
   createReceipt,
   getHousehold,
+  type Household,
   type HouseholdList,
   type InviteCode,
   leaveHousehold,
-  listMembers
+  listMembers,
+  type Member,
+  type MemberList,
+  MyRole,
+  Role,
+  transferOwnership
 } from '@/api';
 import { uploadToS3 } from '@/api/receipts';
 import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
@@ -37,6 +43,9 @@ export function HouseholdPage() {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const leaveButtonRef = useRef<HTMLButtonElement>(null);
   const leaveSubmissionRef = useRef(false);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const transferButtonRef = useRef<HTMLButtonElement>(null);
+  const transferSubmissionRef = useRef(false);
 
   const upload = useMutation({
     mutationFn: async (photo: File) => {
@@ -79,12 +88,67 @@ export function HouseholdPage() {
       leaveSubmissionRef.current = false;
     }
   });
+  const transfer = useMutation({
+    mutationFn: (userId: string) =>
+      transferOwnership({ householdId, transferOwnerRequest: { user_id: userId } }),
+    retry: false,
+    onSuccess: async (updatedMembers) => {
+      const membersQueryKey = ['householdMembers', householdId] as const;
+      const householdQueryKey = ['household', householdId] as const;
+      const householdsQueryKey = ['households', user?.userId] as const;
+
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: membersQueryKey }),
+        queryClient.cancelQueries({ queryKey: householdQueryKey }),
+        queryClient.cancelQueries({ queryKey: householdsQueryKey })
+      ]);
+
+      queryClient.setQueryData<MemberList>(membersQueryKey, updatedMembers);
+
+      const ownMembership = updatedMembers.members.find(
+        (member) => member.user_id === user?.userId
+      );
+      if (ownMembership) {
+        const myRole = ownMembership.role === Role.Owner ? MyRole.Owner : MyRole.Member;
+        queryClient.setQueryData<Household>(householdQueryKey, (current) =>
+          current ? { ...current, my_role: myRole } : current
+        );
+        queryClient.setQueryData<HouseholdList>(householdsQueryKey, (current) =>
+          current
+            ? {
+                ...current,
+                households: current.households.map((item) =>
+                  item.id === householdId ? { ...item, my_role: myRole } : item
+                )
+              }
+            : current
+        );
+      } else {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: householdQueryKey }),
+          queryClient.invalidateQueries({ queryKey: householdsQueryKey })
+        ]);
+      }
+
+      setSelectedMember(null);
+    },
+    onSettled: () => {
+      transferSubmissionRef.current = false;
+    }
+  });
 
   function confirmLeave() {
     if (leaveSubmissionRef.current || leave.isPending) return;
 
     leaveSubmissionRef.current = true;
     leave.mutate();
+  }
+
+  function confirmTransfer() {
+    if (!selectedMember || transferSubmissionRef.current || transfer.isPending) return;
+
+    transferSubmissionRef.current = true;
+    transfer.mutate(selectedMember.user_id);
   }
 
   function handleFileChange(next: File | null) {
@@ -140,7 +204,24 @@ export function HouseholdPage() {
             {members.data.members.map((member) => (
               <li key={member.user_id} className="flex justify-between gap-4 px-3 py-2 text-sm">
                 <span>{member.display_name}</span>
-                <span className="text-gray-600">{householdRoleLabel(member.role)}</span>
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <span className="text-gray-600">{householdRoleLabel(member.role)}</span>
+                  {household.data.my_role === MyRole.Owner &&
+                    user?.userId !== undefined &&
+                    member.user_id !== user.userId && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          transfer.reset();
+                          transferButtonRef.current = event.currentTarget;
+                          setSelectedMember(member);
+                        }}
+                        className="text-sm underline"
+                      >
+                        Haushaltsleitung übergeben
+                      </button>
+                    )}
+                </div>
               </li>
             ))}
           </ul>
@@ -189,8 +270,33 @@ export function HouseholdPage() {
           triggerRef={leaveButtonRef}
         />
       )}
+      {selectedMember && (
+        <TransferOwnershipDialog
+          member={selectedMember}
+          error={transfer.isError ? transferErrorMessage(transfer.error) : null}
+          isPending={transfer.isPending}
+          onClose={() => setSelectedMember(null)}
+          onConfirm={confirmTransfer}
+          triggerRef={transferButtonRef}
+        />
+      )}
     </div>
   );
+}
+
+function transferErrorMessage(error: Error) {
+  if (!(error instanceof HttpError)) {
+    return 'Haushaltsleitung konnte nicht übergeben werden. Bitte versuche es erneut.';
+  }
+
+  switch (error.status) {
+    case 403:
+      return 'Du bist nicht berechtigt, die Haushaltsleitung zu übergeben.';
+    case 404:
+      return 'Der Haushalt oder das Mitglied ist nicht mehr verfügbar.';
+    default:
+      return 'Haushaltsleitung konnte nicht übergeben werden. Bitte versuche es erneut.';
+  }
 }
 
 function leaveErrorMessage(error: Error) {
@@ -281,6 +387,94 @@ function LeaveHouseholdDialog({
           className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
         >
           {isPending ? 'Wird verlassen…' : 'Haushalt verlassen'}
+        </button>
+        <button
+          ref={cancelButtonRef}
+          type="button"
+          disabled={isPending}
+          onClick={close}
+          className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Abbrechen
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+function TransferOwnershipDialog({
+  member,
+  error,
+  isPending,
+  onClose,
+  onConfirm,
+  triggerRef
+}: {
+  member: Member;
+  error: string | null;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const id = useId();
+  const titleId = `${id}-title`;
+  const descriptionId = `${id}-description`;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    dialog.showModal();
+    cancelButtonRef.current?.focus();
+
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, []);
+
+  function close() {
+    onClose();
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }
+
+  function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
+    event.preventDefault();
+    if (!isPending) close();
+  }
+
+  return (
+    <dialog
+      className="m-auto w-full max-w-md rounded-lg bg-white p-6 shadow-lg backdrop:bg-black/40"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      ref={dialogRef}
+      onCancel={handleCancel}
+    >
+      <h2 id={titleId} className="text-lg font-semibold">
+        Haushaltsleitung übergeben?
+      </h2>
+      <p id={descriptionId} className="mt-3 text-sm text-gray-700">
+        Die Haushaltsleitung wird an <span className="font-medium">{member.display_name}</span>{' '}
+        übergeben. Dein eigenes Konto bleibt als Mitglied im Haushalt.
+      </p>
+
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-red-600">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={onConfirm}
+          className="rounded bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        >
+          {isPending ? 'Wird übergeben…' : 'Haushaltsleitung übergeben'}
         </button>
         <button
           ref={cancelButtonRef}
