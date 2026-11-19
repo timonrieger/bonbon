@@ -78,11 +78,17 @@ or SQS ([0007](../decisions/0007-worker-split-and-db-credentials.md)). So:
 - `DELETE /users/me`: new users Lambda **outside** the VPC (the first API Lambda there).
   Disables the Cognito account (`AdminDisableUser`), then sends `{user_id}` to the deletion
   queue, then answers `202`. Order matters: disable first, so the user can't sign in or
-  refresh tokens any more. Takes the user id from the token, never from the request.
+  refresh tokens any more. Reads `sub` straight from the authorizer claims, never from the
+  request, and not through `bonbon.auth.current_user_id`: that syncs the user to the
+  database, which this Lambda can't reach.
 - Deletion worker **outside** the VPC, triggered by the deletion queue. Invokes a cleanup
   Lambda **inside** the VPC (`lambda:Invoke`, synchronous) for all database and S3 work,
   then deletes the Cognito account (`AdminDeleteUser`; `UserNotFoundException` counts as
   success, so a retry doesn't fail on it).
+  A synchronous invoke answers `200` even when the cleanup Lambda raises; the error is only
+  in `FunctionError`. The worker must check it and raise itself, otherwise nothing reaches
+  the DLQ. Timeouts must nest: cleanup Lambda < the worker's boto3 `read_timeout` < worker
+  Lambda < the queue's visibility timeout.
 - Dedicated SQS queue + DLQ (copy `ReceiptsQueue`/`ReceiptsDeadLetterQueue`), CloudWatch
   alarm on DLQ depth.
 - LabRole permissions checked with `iam simulate-principal-policy` (2026-11-19):
@@ -115,3 +121,10 @@ must survive running twice, and every failure must raise (otherwise nothing reac
    already left in an earlier attempt are no longer in the list, so a retry skips them.
 4. **Delete the `users` row** (receipts keep `uploaded_by = NULL`, migration 0003). Keep the
    tombstone.
+
+**Known limitations.**
+
+- The tombstone check is one database query per request, past the `_synced` cache in
+  `bonbon.auth`.
+- An upload link issued before the deletion stays valid for 300 s (`UPLOAD_URL_EXPIRES_IN`).
+  A file uploaded after step 2 is left in S3, together with its Textract result.
