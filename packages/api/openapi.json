@@ -727,6 +727,109 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "PATCH /households/{household_id}/receipts/{receipt_id}",
+        "operationId": "updateReceipt",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Household Id"
+            },
+            "name": "household_id",
+            "in": "path"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Receipt Id"
+            },
+            "name": "receipt_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptCorrection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Household not found, or the caller is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The receipt is not processed yet, or failed or is a duplicate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "statusCode": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object",
+                  "required": [
+                    "statusCode",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/households/{household_id}/reports/monthly": {
@@ -1055,10 +1158,57 @@
           }
         }
       }
+    },
+    "/categories": {
+      "get": {
+        "tags": [
+          "receipts"
+        ],
+        "summary": "GET /categories",
+        "operationId": "listCategories",
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CategoryList": {
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "title": "CategoryList"
+      },
       "CategoryTotal": {
         "properties": {
           "category": {
@@ -1201,6 +1351,61 @@
         ],
         "title": "InviteCode"
       },
+      "ItemCorrection": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Position"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMaximum": 10000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Quantity"
+          },
+          "unit_price_rappen": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": -100000000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Rappen"
+          },
+          "amount_rappen": {
+            "type": "integer",
+            "maximum": 100000000.0,
+            "minimum": -100000000.0,
+            "title": "Amount Rappen"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "name",
+          "quantity",
+          "amount_rappen",
+          "category"
+        ],
+        "title": "ItemCorrection"
+      },
       "JoinRequest": {
         "properties": {
           "code": {
@@ -1337,6 +1542,66 @@
           "by_store"
         ],
         "title": "MonthlyReport"
+      },
+      "ReceiptCorrection": {
+        "properties": {
+          "store": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store"
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date"
+          },
+          "total_rappen": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": -100000000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rappen"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ItemCorrection"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "ReceiptCorrection",
+        "description": "Fields a member corrects (docs/features/02). Left out = unchanged, null = cleared.\n\n`items` replaces all items of the receipt; left out or null keeps them. The total is not\ncomputed from the items: vouchers are often no line items, so the two can differ."
       },
       "ReceiptDetail": {
         "properties": {
