@@ -52,6 +52,12 @@
 **Planned**:
 - Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
+## Verification
+
+- On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
+- An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
+- Concurrent corrections still require a backend version precondition. The frontend snapshot check leaves a window for another write before PATCH.
+
 ## Rules
 
 - Every member of the household can correct any receipt, not only the uploader.

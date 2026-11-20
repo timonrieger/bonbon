@@ -16,6 +16,12 @@
 - [x] The household detail page lets members leave after confirmation and warns about last-member deletion
 - [x] Owner hands over the role before leaving; when the last member leaves, the household, its receipts and images are deleted
 
+## Verification
+
+- On 2026-11-20, manual testing on the live `bonbon-dev` stack verified Cognito login and basic household data isolation between different user accounts.
+- Direct receipt URL access by an unauthorized account and cross-tab identity switching have yet to be tested separately on live AWS.
+- Mocked session isolation and membership denial tests previously passed locally. The earlier local checks also passed 180 backend tests and frontend type checking.
+
 ## Rules
 
 - Every member can create invite codes, not only the owner.

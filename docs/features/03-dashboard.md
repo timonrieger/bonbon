@@ -18,6 +18,10 @@
 - **Receipt UI:** `HouseholdPage.tsx` lists the household’s receipts in API order and links to `ReceiptPage.tsx`. The detail view shows the original image, receipt items and a warning when the API flags a possible duplicate.
 - **Open in the dashboard UI:** total and receipt count for the month, previous-month comparison and the receipt list placeholder.
 
+## Verification
+
+- On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that the dashboard reflected the [receipt category correction](02-extraction-categorization.md#verification).
+
 ## API
 
 All routes check membership (404 for non-members). Amounts are integers in Rappen, months are `YYYY-MM`.

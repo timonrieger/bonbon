@@ -63,6 +63,11 @@ The core of the architecture: the upload ends in S3, everything after runs async
 **Planned**:
 - Textract mock mode for the load test
 
+## Verification
+
+- On 2026-11-20, a manual test on the live `bonbon-dev` stack verified receipt upload to S3, automatic refresh of the household receipt list, asynchronous Textract processing, and automatic status polling.
+- Image compression was previously verified locally in headless Chromium. The combined path of compressing a large image and processing it with live Textract has yet to be tested separately.
+
 ## Notes
 
 - The receipt id is created when the presigned URL is issued and is part of the S3 key. `POST /households/{household_id}/receipts` returns `receipt_id`, `upload_url`, `upload_headers` and `expires_in` (300 s). The browser sends a `PUT` to `upload_url` with every header from `upload_headers` and the file as body. Type, size and tag are signed into the URL, so S3 rejects anything else.
