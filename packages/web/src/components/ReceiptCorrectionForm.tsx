@@ -1,416 +1,354 @@
-/**
- * ReceiptCorrectionForm – display and locally edit an auto-extracted receipt.
- *
- * Shows the recognised header (store, date, total) and all line items.
- * Every field that the data model allows to be corrected is an editable input.
- * The component is intentionally decoupled from the API: it validates locally,
- * converts the draft back to Rappen and calls `onSave(correction)` so the parent
- * can issue the PATCH request once PATCH /households/{id}/receipts/{id} exists.
- *
- * What this component does NOT do:
- *  - Fetch receipt data  (GET /households/{id}/receipts/{id} – returns 501 today)
- *  - Save to the backend (PATCH endpoint not yet designed)
- *
- * See docs/features/02-extraction-categorization.md.
- */
-import { useId, useState } from 'react';
-import type { ReceiptDetail, ReceiptItem } from '@/api';
-import { formatRappen } from '@/api/receipts';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
+import type { ItemCorrection, ReceiptCorrection, ReceiptDetail } from '@/api';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/**
- * Form state of one ReceiptItem. Numeric fields are strings so HTML inputs don't
- * lose the user's partial input mid-edit; prices are in CHF (e.g. "1.50"), not Rappen.
- * An empty `unit_price_chf` means null.
- */
-type ReceiptItemDraft = Pick<ReceiptItem, 'position' | 'name' | 'category'> & {
+type ItemDraft = Pick<ItemCorrection, 'position' | 'name' | 'category'> & {
   quantity: string;
-  unit_price_chf: string;
-  amount_chf: string;
+  unitPrice: string;
+  amount: string;
 };
 
-/** Form state of the editable ReceiptDetail fields; an empty string means null. */
-type ReceiptDraft = Record<'store' | 'purchase_date', string> & { items: ReceiptItemDraft[] };
+type Draft = {
+  store: string;
+  date: string;
+  total: string;
+  items: ItemDraft[];
+};
 
-/**
- * The editable part of ReceiptDetail, validated and back in API units.
- *
- * TODO: replace with the generated PATCH request type once
- *       PATCH /households/{id}/receipts/{id} exists and `mise run generate` ran.
- */
-export type ReceiptCorrection = Pick<ReceiptDetail, 'store' | 'purchase_date' | 'items'>;
+type ItemField = Exclude<keyof ItemDraft, 'position'>;
+type ItemErrors = Partial<Record<ItemField, string>>;
+type FormErrors = Partial<Record<'store' | 'date' | 'total' | 'items', string>> & {
+  rows: Record<number, ItemErrors>;
+};
 
-/** Callback for ReceiptCorrectionForm's onSave prop; the parent issues the PATCH request. */
-export type SaveReceiptCorrection = (correction: ReceiptCorrection) => void;
-
-export interface ReceiptCorrectionFormProps {
-  /** Receipt as returned by GET /households/{id}/receipts/{id}. */
-  receipt: ReceiptDetail;
-  /**
-   * Called with the validated correction (in Rappen) when the user submits.
-   * The save button stays disabled until the PATCH endpoint exists.
-   * Pass a no-op `() => {}` for now; wire up `useMutation` later.
-   */
-  onSave: SaveReceiptCorrection;
-  /** Whether a save operation is currently in flight (disables the form). */
-  isSaving?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const amountError =
+  'Gib einen CHF-Betrag mit höchstens zwei Dezimalstellen ein (maximal ±1 Million CHF).';
+const inputClass = 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-50';
 
 function rappenToInput(rappen: number | null): string {
-  if (rappen === null) return '';
-  return (rappen / 100).toFixed(2);
+  return rappen === null ? '' : (rappen / 100).toFixed(2);
 }
 
-/** Parse a non-negative decimal that may use a comma; null if empty or invalid. */
-function parseDecimal(value: string): number | null {
-  if (value.trim() === '') return null;
-  const n = Number.parseFloat(value.replace(',', '.'));
-  if (Number.isNaN(n) || n < 0) return null;
-  return n;
+/** Parse fixed-point input as an integer without rounding fractional digits. */
+function parseScaled(value: string, precision: number): number {
+  const match = /^(-?)(\d+)(?:[.,](\d+))?$/.exec(value.trim());
+  if (!match || (match[3]?.length ?? 0) > precision) return Number.NaN;
+
+  const [, sign, whole, decimal = ''] = match;
+  return Number(`${sign}${whole}${decimal.padEnd(precision, '0')}`);
 }
 
-function inputToRappen(value: string): number | null {
-  const chf = parseDecimal(value);
-  return chf === null ? null : Math.round(chf * 100);
+function toMoney(value: string): number | null {
+  if (!value.trim()) return null;
+  const rappen = parseScaled(value, 2);
+  return Math.abs(rappen) <= 100_000_000 ? rappen : Number.NaN;
 }
 
-function itemToDraft(item: ReceiptItem): ReceiptItemDraft {
-  return {
-    position: item.position,
-    name: item.name,
-    quantity: String(item.quantity),
-    unit_price_chf: rappenToInput(item.unit_price_rappen),
-    amount_chf: rappenToInput(item.amount_rappen),
-    category: item.category
-  };
+function toQuantity(value: string): number {
+  const thousandths = parseScaled(value, 3);
+  return thousandths >= 1 && thousandths <= 9_999_999_999 ? thousandths / 1000 : Number.NaN;
 }
 
-function receiptToDraft(receipt: ReceiptDetail): ReceiptDraft {
+function receiptToDraft(receipt: ReceiptDetail): Draft {
   return {
     store: receipt.store ?? '',
-    purchase_date: receipt.purchase_date ?? '',
-    items: receipt.items.map(itemToDraft)
-  };
-}
-
-/** Convert a validated draft back to API units. Only call after validate() passed. */
-function draftToCorrection(draft: ReceiptDraft): ReceiptCorrection {
-  return {
-    store: draft.store.trim() === '' ? null : draft.store.trim(),
-    purchase_date: draft.purchase_date === '' ? null : draft.purchase_date,
-    items: draft.items.map((item) => ({
+    date: receipt.purchase_date ?? '',
+    total: rappenToInput(receipt.total_rappen),
+    items: receipt.items.map((item) => ({
       position: item.position,
-      name: item.name.trim(),
-      quantity: parseDecimal(item.quantity) ?? 0,
-      unit_price_rappen: inputToRappen(item.unit_price_chf),
-      amount_rappen: inputToRappen(item.amount_chf) ?? 0,
-      category: item.category.trim()
+      name: item.name,
+      quantity: String(item.quantity),
+      unitPrice: rappenToInput(item.unit_price_rappen),
+      amount: rappenToInput(item.amount_rappen),
+      category: item.category
     }))
   };
 }
 
-// ---------------------------------------------------------------------------
-// Sub-component: a single item row
-// ---------------------------------------------------------------------------
+function buildCorrection(draft: Draft, original: Draft, categories: readonly string[]) {
+  const correction: ReceiptCorrection = {};
+  const errors: FormErrors = { rows: {} };
 
-interface ItemRowProps {
-  item: ReceiptItemDraft;
-  index: number;
-  baseId: string;
-  disabled: boolean;
-  onChange: (index: number, field: keyof ReceiptItemDraft, value: string) => void;
+  if (draft.store.trim() !== original.store.trim()) {
+    const store = draft.store.trim();
+    if ([...store].length > 200) errors.store = 'Das Geschäft darf höchstens 200 Zeichen haben.';
+    else correction.store = store || null;
+  }
+  if (draft.date !== original.date) {
+    const date = new Date(`${draft.date}T00:00:00Z`);
+    if (
+      draft.date &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(draft.date) ||
+        draft.date.startsWith('0000-') ||
+        Number.isNaN(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== draft.date)
+    ) {
+      errors.date = 'Gib ein gültiges Kaufdatum ein.';
+    } else correction.purchase_date = draft.date || null;
+  }
+  if (draft.total !== original.total) {
+    const total = toMoney(draft.total);
+    if (Number.isNaN(total)) errors.total = amountError;
+    else if (total !== toMoney(original.total)) correction.total_rappen = total;
+  }
+
+  // A header-only PATCH keeps the original items, including older API data.
+  if (JSON.stringify(draft.items) !== JSON.stringify(original.items)) {
+    if (draft.items.length > 500)
+      errors.items = 'Es können höchstens 500 Positionen gespeichert werden.';
+    const items: ItemCorrection[] = [];
+    for (const item of draft.items) {
+      const row: ItemErrors = {};
+      const name = item.name.trim();
+      const quantity = toQuantity(item.quantity);
+      const unitPrice = toMoney(item.unitPrice);
+      const amount = toMoney(item.amount);
+      if (!name || [...name].length > 200) row.name = 'Gib 1 bis 200 Zeichen ein.';
+      if (Number.isNaN(quantity))
+        row.quantity = 'Erlaubt sind 0.001 bis 9’999’999.999 mit höchstens drei Dezimalstellen.';
+      if (Number.isNaN(unitPrice)) row.unitPrice = amountError;
+      if (amount === null || Number.isNaN(amount)) row.amount = amountError;
+      if (!categories.includes(item.category)) row.category = 'Wähle eine verfügbare Kategorie.';
+      if (Object.keys(row).length) {
+        errors.rows[item.position] = row;
+      } else if (amount !== null) {
+        items.push({
+          position: item.position,
+          name,
+          quantity,
+          unit_price_rappen: unitPrice,
+          amount_rappen: amount,
+          category: item.category
+        });
+      }
+    }
+    correction.items = items;
+  }
+
+  return {
+    correction,
+    errors,
+    valid: Object.keys(errors).length === 1 && !Object.keys(errors.rows).length
+  };
 }
 
-function ItemRow({ item, index, baseId, disabled, onChange }: ItemRowProps) {
-  const rowId = `${baseId}-item-${item.position}`;
+function FieldError({ id, error }: { id: string; error?: string }) {
   return (
-    <tr className="border-t border-gray-100">
-      <td className="py-1.5 pr-2">
-        <label className="sr-only" htmlFor={`${rowId}-name`}>
-          Bezeichnung Pos. {item.position}
+    error && (
+      <p id={id} className="mt-1 text-xs text-red-700">
+        {error}
+      </p>
+    )
+  );
+}
+
+const itemFields = [
+  { name: 'name', label: 'Bezeichnung', inputMode: 'text' },
+  { name: 'quantity', label: 'Menge', inputMode: 'decimal' },
+  { name: 'unitPrice', label: 'Stückpreis (CHF)', inputMode: 'decimal' },
+  { name: 'amount', label: 'Betrag (CHF)', inputMode: 'decimal' }
+] as const;
+
+function ItemRow({
+  item,
+  baseId,
+  categories,
+  errors,
+  onChange
+}: {
+  item: ItemDraft;
+  baseId: string;
+  categories: readonly string[];
+  errors?: ItemErrors;
+  onChange: (field: ItemField, value: string) => void;
+}) {
+  const rowId = `${baseId}-item-${item.position}`;
+  const categoryId = `${rowId}-category`;
+  return (
+    <tr className="border-t border-gray-100 align-top">
+      {itemFields.map(({ name, label, inputMode }) => {
+        const id = `${rowId}-${name}`;
+        const error = errors?.[name];
+        return (
+          <td key={name} className="p-2">
+            <label className="sr-only" htmlFor={id}>
+              {label}, Position {item.position}
+            </label>
+            <input
+              id={id}
+              inputMode={inputMode}
+              value={item[name]}
+              onChange={(event) => onChange(name, event.target.value)}
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? `${id}-error` : undefined}
+              className={inputClass}
+            />
+            <FieldError id={`${id}-error`} error={error} />
+          </td>
+        );
+      })}
+      <td className="p-2">
+        <label className="sr-only" htmlFor={categoryId}>
+          Kategorie, Position {item.position}
         </label>
-        <input
-          id={`${rowId}-name`}
-          type="text"
-          value={item.name}
-          disabled={disabled}
-          onChange={(e) => onChange(index, 'name', e.target.value)}
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
-          required
-        />
-      </td>
-      <td className="py-1.5 pr-2 w-20">
-        <label className="sr-only" htmlFor={`${rowId}-qty`}>
-          Menge Pos. {item.position}
-        </label>
-        <input
-          id={`${rowId}-qty`}
-          type="number"
-          value={item.quantity}
-          min="0"
-          step="0.001"
-          disabled={disabled}
-          onChange={(e) => onChange(index, 'quantity', e.target.value)}
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
-        />
-      </td>
-      <td className="py-1.5 pr-2 w-24">
-        <label className="sr-only" htmlFor={`${rowId}-unit`}>
-          Stückpreis Pos. {item.position} (CHF)
-        </label>
-        <input
-          id={`${rowId}-unit`}
-          type="number"
-          value={item.unit_price_chf}
-          placeholder="–"
-          min="0"
-          step="0.05"
-          disabled={disabled}
-          onChange={(e) => onChange(index, 'unit_price_chf', e.target.value)}
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
-        />
-      </td>
-      <td className="py-1.5 pr-2 w-24">
-        <label className="sr-only" htmlFor={`${rowId}-amt`}>
-          Betrag Pos. {item.position} (CHF)
-        </label>
-        <input
-          id={`${rowId}-amt`}
-          type="number"
-          value={item.amount_chf}
-          min="0"
-          step="0.05"
-          disabled={disabled}
-          onChange={(e) => onChange(index, 'amount_chf', e.target.value)}
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
-          required
-        />
-      </td>
-      <td className="py-1.5 w-32">
-        <label className="sr-only" htmlFor={`${rowId}-cat`}>
-          Kategorie Pos. {item.position}
-        </label>
-        <input
-          id={`${rowId}-cat`}
-          type="text"
+        <select
+          id={categoryId}
           value={item.category}
-          disabled={disabled}
-          onChange={(e) => onChange(index, 'category', e.target.value)}
-          className="w-full rounded border border-gray-200 px-2 py-1 text-sm disabled:bg-gray-50"
-          required
-        />
+          onChange={(event) => onChange('category', event.target.value)}
+          disabled={!categories.length}
+          aria-invalid={Boolean(errors?.category)}
+          aria-describedby={errors?.category ? `${categoryId}-error` : undefined}
+          className={inputClass}
+        >
+          {!categories.includes(item.category) && (
+            <option value={item.category}>{item.category || 'Kategorie wählen'}</option>
+          )}
+          {categories.map((category) => (
+            <option key={category} value={category}>
+              {category}
+            </option>
+          ))}
+        </select>
+        <FieldError id={`${categoryId}-error`} error={errors?.category} />
       </td>
     </tr>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-interface FormErrors {
-  purchase_date?: string;
-  items: Record<number, Partial<Record<keyof ReceiptItemDraft, string>>>;
-}
-
-function validate(draft: ReceiptDraft): FormErrors {
-  const errors: FormErrors = { items: {} };
-
-  if (draft.purchase_date !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.purchase_date)) {
-    errors.purchase_date = 'Bitte ein gültiges Datum eingeben (TT.MM.JJJJ).';
-  }
-
-  for (const [i, item] of draft.items.entries()) {
-    const itemErrors: Partial<Record<keyof ReceiptItemDraft, string>> = {};
-    if (item.name.trim() === '') {
-      itemErrors.name = 'Bezeichnung darf nicht leer sein.';
-    }
-    if (parseDecimal(item.quantity) === null) {
-      itemErrors.quantity = 'Ungültige Menge.';
-    }
-    if (item.unit_price_chf.trim() !== '' && inputToRappen(item.unit_price_chf) === null) {
-      itemErrors.unit_price_chf = 'Ungültiger Stückpreis.';
-    }
-    if (inputToRappen(item.amount_chf) === null) {
-      itemErrors.amount_chf = 'Betrag fehlt oder ist ungültig.';
-    }
-    if (item.category.trim() === '') {
-      itemErrors.category = 'Kategorie darf nicht leer sein.';
-    }
-    if (Object.keys(itemErrors).length > 0) {
-      errors.items[i] = itemErrors;
-    }
-  }
-
-  return errors;
-}
-
-function hasErrors(e: FormErrors): boolean {
-  return Boolean(e.purchase_date || Object.keys(e.items).length > 0);
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
 export function ReceiptCorrectionForm({
   receipt,
+  categories,
+  canSave,
+  isSaving,
   onSave,
-  isSaving = false
-}: ReceiptCorrectionFormProps) {
+  onCancel
+}: {
+  receipt: ReceiptDetail;
+  categories: readonly string[];
+  canSave: boolean;
+  isSaving: boolean;
+  onSave: (correction: ReceiptCorrection) => void;
+  onCancel: () => void;
+}) {
   const baseId = useId();
-
-  const [draft, setDraft] = useState<ReceiptDraft>(() => receiptToDraft(receipt));
+  const storeInput = useRef<HTMLInputElement>(null);
+  // This snapshot belongs to the edit session. Refetches must not replace it.
+  const [original] = useState(() => receiptToDraft(receipt));
+  const [draft, setDraft] = useState(original);
   const [submitted, setSubmitted] = useState(false);
+  const result = buildCorrection(draft, original, categories);
+  const errors: FormErrors = submitted ? result.errors : { rows: {} };
+  const dirty = Object.keys(result.correction).length > 0 || !result.valid;
 
-  // Reset the draft only when a different receipt is shown. A refetch of the same
-  // receipt (new object, same id) must not wipe the user's unsaved edits.
-  const [draftReceiptId, setDraftReceiptId] = useState(receipt.id);
-  if (receipt.id !== draftReceiptId) {
-    setDraftReceiptId(receipt.id);
-    setDraft(receiptToDraft(receipt));
-    setSubmitted(false);
-  }
+  useLayoutEffect(() => {
+    storeInput.current?.focus();
+  }, []);
 
-  // Errors only show after the first submit attempt, then update as the user types.
-  const errors: FormErrors = submitted ? validate(draft) : { items: {} };
-
-  function handleHeaderChange(field: 'store' | 'purchase_date', value: string) {
-    setDraft({ ...draft, [field]: value });
-  }
-
-  function handleItemChange(index: number, field: keyof ReceiptItemDraft, value: string) {
-    const nextItems = draft.items.map((item, i) =>
-      i === index ? { ...item, [field]: value } : item
-    );
-    setDraft({ ...draft, items: nextItems });
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!canSave || isSaving || !dirty) return;
     setSubmitted(true);
-    if (hasErrors(validate(draft))) return;
-    onSave(draftToCorrection(draft));
+    if (result.valid) onSave(result.correction);
   }
 
   return (
     <form onSubmit={handleSubmit} noValidate aria-label="Kassenzettel korrigieren">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:gap-6">
-        {/* Store */}
-        <div className="flex flex-col gap-1 sm:flex-1">
-          <label htmlFor={`${baseId}-store`} className="text-sm font-medium">
-            Geschäft
-          </label>
-          <input
-            id={`${baseId}-store`}
-            type="text"
-            value={draft.store}
-            placeholder="Nicht erkannt"
-            disabled={isSaving}
-            onChange={(e) => handleHeaderChange('store', e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
-          />
-        </div>
-
-        {/* Purchase date */}
-        <div className="flex flex-col gap-1 sm:w-44">
-          <label htmlFor={`${baseId}-date`} className="text-sm font-medium">
-            Kaufdatum
-          </label>
-          <input
-            id={`${baseId}-date`}
-            type="date"
-            value={draft.purchase_date}
-            disabled={isSaving}
-            onChange={(e) => handleHeaderChange('purchase_date', e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
-            aria-describedby={errors.purchase_date ? `${baseId}-date-error` : undefined}
-          />
-          {errors.purchase_date && (
-            <p id={`${baseId}-date-error`} role="alert" className="text-xs text-red-600">
-              {errors.purchase_date}
-            </p>
-          )}
-        </div>
-
-        {/* Total – read-only */}
-        <div className="flex flex-col gap-1 sm:w-32">
-          <span className="text-sm font-medium">Total</span>
-          <span className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-            {formatRappen(receipt.total_rappen)}
-          </span>
-          <span className="text-xs text-gray-400">Wird aus den Positionen berechnet</span>
-        </div>
-      </div>
-
-      {/* ── Line items ─────────────────────────────────────────── */}
-      {draft.items.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" aria-label="Positionen">
-            <thead>
-              <tr className="text-left text-xs text-gray-500">
-                <th className="pb-2 pr-2 font-medium">Bezeichnung</th>
-                <th className="pb-2 pr-2 font-medium w-20">Menge</th>
-                <th className="pb-2 pr-2 font-medium w-24">Stückpreis</th>
-                <th className="pb-2 pr-2 font-medium w-24">Betrag</th>
-                <th className="pb-2 font-medium w-32">Kategorie</th>
-              </tr>
-            </thead>
-            <tbody>
-              {draft.items.map((item, index) => (
-                <ItemRow
-                  key={item.position}
-                  item={item}
-                  index={index}
-                  baseId={baseId}
-                  disabled={isSaving}
-                  onChange={handleItemChange}
+      <fieldset disabled={isSaving} className="min-w-0">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {(
+            [
+              { field: 'store', label: 'Geschäft', type: 'text' },
+              { field: 'date', label: 'Kaufdatum', type: 'date' },
+              { field: 'total', label: 'Total (CHF)', type: 'text' }
+            ] as const
+          ).map(({ field, label, type }) => {
+            const id = `${baseId}-${field}`;
+            const error = errors[field];
+            return (
+              <div key={field} className="min-w-0">
+                <label htmlFor={id} className="mb-1 block text-sm font-medium">
+                  {label}
+                </label>
+                <input
+                  id={id}
+                  ref={field === 'store' ? storeInput : undefined}
+                  type={type}
+                  inputMode={field === 'total' ? 'decimal' : undefined}
+                  value={draft[field]}
+                  onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? `${id}-error` : undefined}
+                  className={inputClass}
                 />
-              ))}
-            </tbody>
-          </table>
-
-          {/* Per-item errors rendered below the table to keep the layout clean */}
-          {Object.entries(errors.items).map(([i, itemErrors]) =>
-            Object.entries(itemErrors).map(([field, msg]) => (
-              <p key={`${i}-${field}`} role="alert" className="mt-1 text-xs text-red-600">
-                Pos. {draft.items[Number(i)]?.position}: {msg}
-              </p>
-            ))
-          )}
+                <FieldError id={`${id}-error`} error={error} />
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <p className="text-sm text-gray-500">
-          Keine Positionen erkannt. Das Backend hat den Kassenzettel noch nicht verarbeitet oder die
-          Extraktion ist fehlgeschlagen.
-        </p>
-      )}
 
-      {/* ── Save button ────────────────────────────────────────── */}
-      <div className="mt-6 flex items-center gap-3">
-        {/*
-         * The button is disabled until PATCH /households/{id}/receipts/{id} exists.
-         * To activate: remove `disabled`, pass a real `onSave` from useMutation.
-         * See docs/features/02-extraction-categorization.md.
-         */}
-        <button
-          type="submit"
-          disabled
-          className="rounded bg-black px-4 py-2 text-sm text-white opacity-50"
-          title="Speichern wird verfügbar, sobald der Backend-Endpunkt fertiggestellt ist"
-        >
-          {isSaving ? 'Wird gespeichert…' : 'Korrekturen speichern'}
-        </button>
-        <span className="text-xs text-gray-400">Speichern wird demnächst verfügbar</span>
-      </div>
+        {draft.items.length > 0 ? (
+          <section
+            className="mt-4 overflow-x-auto"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll the table on narrow screens
+            tabIndex={0}
+            aria-label="Belegpositionen bearbeiten"
+          >
+            <table className="w-full min-w-[40rem] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-600">
+                  {itemFields.map(({ name, label }) => (
+                    <th key={name} scope="col" className="p-2">
+                      {label}
+                    </th>
+                  ))}
+                  <th scope="col" className="p-2">
+                    Kategorie
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.items.map((item, index) => (
+                  <ItemRow
+                    key={item.position}
+                    item={item}
+                    baseId={baseId}
+                    categories={categories}
+                    errors={errors.rows[item.position]}
+                    onChange={(field, value) =>
+                      setDraft({
+                        ...draft,
+                        items: draft.items.map((row, i) =>
+                          i === index ? { ...row, [field]: value } : row
+                        )
+                      })
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : (
+          <p className="mt-4 text-sm text-gray-600">Keine Positionen vorhanden.</p>
+        )}
+        <FieldError id={`${baseId}-items-error`} error={errors.items} />
+
+        {submitted && !result.valid && (
+          <p role="alert" className="mt-4 text-sm text-red-700">
+            Prüfe die markierten Eingaben.
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={!canSave || !dirty || isSaving}
+            className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {isSaving ? 'Wird gespeichert…' : 'Korrekturen speichern'}
+          </button>
+          <button type="button" onClick={onCancel} className="rounded border px-4 py-2 text-sm">
+            Abbrechen
+          </button>
+        </div>
+      </fieldset>
     </form>
   );
 }

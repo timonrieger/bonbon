@@ -7,51 +7,24 @@
 - [x] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense; accuracy is checked with the test set below)
 - [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
-- [ ] Manual correction of items, prices and categories (optional: categories only); API done (#26), UI wiring open
-- [ ] Corrections only update the database; nothing is trained
+- [x] Manual correction of store, purchase date, total, items, prices and categories
+- [x] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
 
 ## Implementation status
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-**Implemented** (#16):
-
-- `src/components/ReceiptCorrectionForm.tsx`: correction form for auto-extracted receipt data
-  - Displays and edits: `store` (text), `purchase_date` (date picker), item rows
-  - Each item row edits: `name`, `quantity`, `unit_price_rappen` (CHF), `amount_rappen` (CHF), `category`
-  - `total_rappen`, `status`, `image_url`, `position` are read-only (computed or backend-owned)
-  - Local validation: empty names/categories, invalid amounts, malformed date
-  - Error messages shown per field with `role="alert"`; form re-validates on change after first submit attempt
-  - `onSave(correction: ReceiptCorrection)` callback with the validated values converted
-    back to API units (Rappen, numbers, `null`) — parent is responsible for the PATCH call
-  - Save button is `disabled` until PATCH endpoint exists; no fake save, no mock
-  - Keyboard-navigable; each input has an associated `<label>` via `useId()`-based IDs
-  - Re-initialises when `receipt.id` changes (e.g. navigation between receipts); a refetch
-    of the same receipt keeps unsaved edits
-  - Form state (`ReceiptDraft`, prices in CHF) and the `ReceiptCorrection` stand-in for the
-    PATCH body live in the component file
-- `src/api/receipts.ts`: added the `formatRappen` helper
-
-**Backend ready** (#26): `GET /households/{id}/receipts/{id}` returns the generated
-`ReceiptDetail` the form takes (#18); items stay empty until the worker writes them (#22).
-
-**To wire up:**
-
-1. Replace the `ReceiptCorrection` stand-in in the component with the generated
-   `ReceiptCorrection` from `@/api`. Same shape, plus an optional `total_rappen`.
-2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
-   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(updateReceipt)`; the
-   response is the corrected `ReceiptDetail`, so it can go straight into the query cache.
-3. Category field as a `<select>` from `useQuery(listCategories)`.
-4. Remove the `disabled` from the save button.
-5. Allow negative amounts (discounts, vouchers), the API accepts them.
+- `ReceiptPage.tsx` displays an extracted receipt and polls while processing is pending. A processed (`done`) receipt can be opened for editing. The page keeps the loaded image preview when renewing the presigned original link on demand.
+- `ReceiptCorrectionForm.tsx` edits the store, purchase date, total and existing item rows. Categories use the backend order from `listCategories`, with «Sonstiges» last. The total is edited independently of the items. Amounts accept negative values and are sent as integer Rappen. Quantities allow up to three decimal places within the database range.
+- The form compares edits with its starting snapshot. A PATCH omits untouched fields, sends `null` for cleared header fields or unit prices, and replaces the complete item list when an item is edited. A background refresh or a recoverable save failure keeps the draft intact. Cancelling discards the draft. Before replacing items, the frontend fetches the latest item list and refuses to apply an edit based on a changed snapshot. The user can discard the draft and review the current receipt. Another write can still occur between this check and PATCH. Closing that window requires a backend version precondition.
+- On success, the detail cache receives the corrected receipt and the household's receipt lists, monthly reports and spending trends are invalidated, including months affected by a purchase date change. Access denial removes the private detail from view.
 
 ### API (#26)
 
 | Route | Frontend function | What it does |
 |---|---|---|
-| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Fields left out stay, `null` clears them; `items` replaces all items. Returns the corrected `ReceiptDetail` |
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Omitted header fields stay unchanged and `null` clears them. An item list replaces all items, including an empty list. Omitted or `null` items stay unchanged. Returns the corrected `ReceiptDetail` |
 | `GET /categories` | `listCategories` | All category names, sorted, «Sonstiges» last; the same for every household |
 
 - 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
@@ -78,6 +51,12 @@
 
 **Planned**:
 - Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
+
+## Verification
+
+- On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
+- An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
+- Concurrent corrections still require a backend version precondition. The frontend snapshot check leaves a window for another write before PATCH.
 
 ## Rules
 
