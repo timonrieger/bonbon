@@ -136,6 +136,7 @@ export function HouseholdPage() {
       }
 
       setSelectedMember(null);
+      window.requestAnimationFrame(() => membersHeadingRef.current?.focus());
     },
     onSettled: () => {
       transferSubmissionRef.current = false;
@@ -156,13 +157,18 @@ export function HouseholdPage() {
           : current
       );
       setMemberToRemove(null);
-      window.requestAnimationFrame(() => membersHeadingRef.current?.focus());
       void queryClient.invalidateQueries({ queryKey: membersQueryKey });
     },
     onSettled: () => {
       removeMemberSubmissionRef.current = false;
     }
   });
+
+  useEffect(() => {
+    if (remove.isSuccess && memberToRemove === null) {
+      membersHeadingRef.current?.focus();
+    }
+  }, [memberToRemove, remove.isSuccess]);
 
   function confirmLeave() {
     if (leaveSubmissionRef.current || leave.isPending) return;
@@ -327,32 +333,64 @@ export function HouseholdPage() {
       </section>
 
       {showLeaveDialog && (
-        <LeaveHouseholdDialog
+        <ConfirmDialog
+          title="Haushalt verlassen?"
+          description={
+            <>
+              <p>Du verlierst sofort den Zugriff auf diesen Haushalt.</p>
+              <p className="mt-3 rounded bg-red-50 px-3 py-2 text-red-800">
+                Falls du das letzte Mitglied bist, wird der Haushalt samt Belegen und Bildern
+                gelöscht.
+              </p>
+            </>
+          }
           error={leave.isError ? leaveErrorMessage(leave.error) : null}
           isPending={leave.isPending}
           onClose={() => setShowLeaveDialog(false)}
           onConfirm={confirmLeave}
           triggerRef={leaveButtonRef}
+          confirmLabel="Haushalt verlassen"
+          pendingLabel="Wird verlassen…"
+          confirmClassName="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
         />
       )}
       {selectedMember && (
-        <TransferOwnershipDialog
-          member={selectedMember}
+        <ConfirmDialog
+          title="Haushaltsleitung übergeben?"
+          description={
+            <p>
+              Die Haushaltsleitung wird an{' '}
+              <span className="font-medium">{selectedMember.display_name}</span> übergeben. Dein
+              eigenes Konto bleibt als Mitglied im Haushalt.
+            </p>
+          }
           error={transfer.isError ? transferErrorMessage(transfer.error) : null}
           isPending={transfer.isPending}
           onClose={() => setSelectedMember(null)}
           onConfirm={confirmTransfer}
           triggerRef={transferButtonRef}
+          confirmLabel="Haushaltsleitung übergeben"
+          pendingLabel="Wird übergeben…"
+          confirmClassName="rounded bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
         />
       )}
       {memberToRemove && (
-        <RemoveMemberDialog
-          member={memberToRemove}
+        <ConfirmDialog
+          title="Mitglied entfernen?"
+          description={
+            <p>
+              <span className="font-medium">{memberToRemove.display_name}</span> verliert sofort den
+              Zugriff auf diesen Haushalt.
+            </p>
+          }
           error={remove.isError ? removeMemberErrorMessage(remove.error) : null}
           isPending={remove.isPending}
           onClose={() => setMemberToRemove(null)}
           onConfirm={confirmRemoveMember}
           triggerRef={removeMemberButtonRef}
+          confirmLabel="Mitglied entfernen"
+          pendingLabel="Wird entfernt…"
+          confirmClassName="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
         />
       )}
     </div>
@@ -404,108 +442,28 @@ function leaveErrorMessage(error: Error) {
   }
 }
 
-function LeaveHouseholdDialog({
+function ConfirmDialog({
+  title,
+  description,
   error,
   isPending,
   onClose,
   onConfirm,
-  triggerRef
+  triggerRef,
+  confirmLabel,
+  pendingLabel,
+  confirmClassName
 }: {
+  title: string;
+  description: React.ReactNode;
   error: string | null;
   isPending: boolean;
   onClose: () => void;
   onConfirm: () => void;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
-}) {
-  const id = useId();
-  const titleId = `${id}-title`;
-  const warningId = `${id}-warning`;
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    dialog.showModal();
-    cancelButtonRef.current?.focus();
-
-    return () => {
-      if (dialog.open) dialog.close();
-    };
-  }, []);
-
-  function close() {
-    onClose();
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  }
-
-  function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
-    event.preventDefault();
-    if (!isPending) close();
-  }
-
-  return (
-    <dialog
-      className="m-auto w-full max-w-md rounded-lg bg-white p-6 shadow-lg backdrop:bg-black/40"
-      aria-labelledby={titleId}
-      aria-describedby={warningId}
-      ref={dialogRef}
-      onCancel={handleCancel}
-    >
-      <h2 id={titleId} className="text-lg font-semibold">
-        Haushalt verlassen?
-      </h2>
-      <p className="mt-3 text-sm text-gray-700">
-        Du verlierst sofort den Zugriff auf diesen Haushalt.
-      </p>
-      <p id={warningId} className="mt-3 rounded bg-red-50 px-3 py-2 text-sm text-red-800">
-        Falls du das letzte Mitglied bist, wird der Haushalt samt Belegen und Bildern gelöscht.
-      </p>
-
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
-        <button
-          type="button"
-          disabled={isPending}
-          onClick={onConfirm}
-          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          {isPending ? 'Wird verlassen…' : 'Haushalt verlassen'}
-        </button>
-        <button
-          ref={cancelButtonRef}
-          type="button"
-          disabled={isPending}
-          onClick={close}
-          className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Abbrechen
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
-function TransferOwnershipDialog({
-  member,
-  error,
-  isPending,
-  onClose,
-  onConfirm,
-  triggerRef
-}: {
-  member: Member;
-  error: string | null;
-  isPending: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  confirmLabel: string;
+  pendingLabel: string;
+  confirmClassName: string;
 }) {
   const id = useId();
   const titleId = `${id}-title`;
@@ -544,100 +502,11 @@ function TransferOwnershipDialog({
       onCancel={handleCancel}
     >
       <h2 id={titleId} className="text-lg font-semibold">
-        Haushaltsleitung übergeben?
+        {title}
       </h2>
-      <p id={descriptionId} className="mt-3 text-sm text-gray-700">
-        Die Haushaltsleitung wird an <span className="font-medium">{member.display_name}</span>{' '}
-        übergeben. Dein eigenes Konto bleibt als Mitglied im Haushalt.
-      </p>
-
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
-        <button
-          type="button"
-          disabled={isPending}
-          onClick={onConfirm}
-          className="rounded bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-        >
-          {isPending ? 'Wird übergeben…' : 'Haushaltsleitung übergeben'}
-        </button>
-        <button
-          ref={cancelButtonRef}
-          type="button"
-          disabled={isPending}
-          onClick={close}
-          className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          Abbrechen
-        </button>
+      <div id={descriptionId} className="mt-3 text-sm text-gray-700">
+        {description}
       </div>
-    </dialog>
-  );
-}
-
-function RemoveMemberDialog({
-  member,
-  error,
-  isPending,
-  onClose,
-  onConfirm,
-  triggerRef
-}: {
-  member: Member;
-  error: string | null;
-  isPending: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  triggerRef: React.RefObject<HTMLButtonElement | null>;
-}) {
-  const id = useId();
-  const titleId = `${id}-title`;
-  const descriptionId = `${id}-description`;
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    dialog.showModal();
-    cancelButtonRef.current?.focus();
-
-    return () => {
-      if (dialog.open) dialog.close();
-    };
-  }, []);
-
-  function close() {
-    onClose();
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
-  }
-
-  function handleCancel(event: React.SyntheticEvent<HTMLDialogElement>) {
-    event.preventDefault();
-    if (!isPending) close();
-  }
-
-  return (
-    <dialog
-      className="m-auto w-full max-w-md rounded-lg bg-white p-6 shadow-lg backdrop:bg-black/40"
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      ref={dialogRef}
-      onCancel={handleCancel}
-    >
-      <h2 id={titleId} className="text-lg font-semibold">
-        Mitglied entfernen?
-      </h2>
-      <p id={descriptionId} className="mt-3 text-sm text-gray-700">
-        <span className="font-medium">{member.display_name}</span> verliert sofort den Zugriff auf
-        diesen Haushalt.
-      </p>
 
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-600">
@@ -646,13 +515,8 @@ function RemoveMemberDialog({
       )}
 
       <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
-        <button
-          type="button"
-          disabled={isPending}
-          onClick={onConfirm}
-          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          {isPending ? 'Wird entfernt…' : 'Mitglied entfernen'}
+        <button type="button" disabled={isPending} onClick={onConfirm} className={confirmClassName}>
+          {isPending ? pendingLabel : confirmLabel}
         </button>
         <button
           ref={cancelButtonRef}
