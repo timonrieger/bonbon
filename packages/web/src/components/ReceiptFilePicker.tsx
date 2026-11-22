@@ -5,7 +5,11 @@
  * See docs/features/01-upload-processing.md.
  */
 import { useId, useState } from 'react';
-import { formatBytes, RECEIPT_IMAGE_TYPES, validateReceiptImage } from '@/api/receiptImage';
+import {
+  formatBytes,
+  RECEIPT_IMAGE_TYPES,
+  validateReceiptImage
+} from '@/features/receipts/receiptImage';
 
 export interface ReceiptFilePickerProps {
   /** The selected, already validated file; null when nothing is selected. */

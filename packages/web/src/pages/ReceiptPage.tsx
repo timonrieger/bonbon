@@ -1,5 +1,5 @@
 import { HttpError } from '@oazapfts/runtime';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
@@ -10,7 +10,6 @@ import {
   Status,
   updateReceipt
 } from '@/api';
-import { denyHouseholdAccess, householdAccessKey, useHouseholdAccess } from '@/api/householdAccess';
 import { isPrivateResourceUnavailable, requestPrivateResource } from '@/api/privateQuery';
 import {
   formatDate,
@@ -19,9 +18,14 @@ import {
   RECEIPT_POLL_ERROR_INTERVAL,
   RECEIPT_POLL_INTERVAL
 } from '@/api/receipts';
-import { useUploadSignal } from '@/components/AuthenticatedSession';
+import { useSessionMutation, useSessionSignal } from '@/components/AuthenticatedSession';
 import { ReceiptCorrectionForm } from '@/components/ReceiptCorrectionForm';
 import { ReceiptStatusBadge } from '@/components/ReceiptStatusBadge';
+import {
+  handleHouseholdAccessError,
+  householdAccessKey
+} from '@/features/households/householdAccess';
+import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
 
 function isPreviewUrl(url: string): boolean {
   return URL.canParse(url) && new URL(url).protocol === 'https:';
@@ -186,7 +190,7 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
   const editButton = useRef<HTMLButtonElement>(null);
   const restoreEditFocus = useRef(false);
   const queryClient = useQueryClient();
-  const getSessionSignal = useUploadSignal();
+  const getSessionSignal = useSessionSignal();
   const detailKey = ['receipt', householdId, receiptId] as const;
   const accessKey = householdAccessKey(householdId);
   const [initialAccessVersion] = useState(
@@ -199,17 +203,18 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
       (queryClient.getQueryState(accessKey)?.dataUpdateCount ?? 0) > initialAccessVersion
   );
 
-  async function handleReceiptDenial(error: unknown, signal: AbortSignal) {
+  function handleReceiptDenial(error: unknown, signal: AbortSignal) {
     signal.throwIfAborted();
     if (error instanceof HttpError && error.status === 404) {
       // A missing receipt and loss of household membership both return 404.
-      await access.refetch({ cancelRefetch: false });
+      // Let the detail query clear its cached data without waiting for this check.
+      void access.refetch({ cancelRefetch: false });
     } else {
-      denyHouseholdAccess(queryClient, householdId);
+      handleHouseholdAccessError(queryClient, householdId, error, signal);
     }
   }
 
-  function getDetail(signal: AbortSignal) {
+  function getDetail(signal?: AbortSignal) {
     return requestPrivateResource(
       (options) => getReceipt({ householdId, receiptId }, options),
       signal
@@ -223,7 +228,7 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
         return await getDetail(signal);
       } catch (error) {
         if (!isPrivateResourceUnavailable(error)) throw error;
-        await handleReceiptDenial(error, signal);
+        handleReceiptDenial(error, signal);
         return null;
       }
     },
@@ -256,22 +261,21 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
     );
   }
 
-  const save = useMutation({
+  const save = useSessionMutation({
     mutationFn: async ({
       correction,
       originalItems,
-      entry,
-      signal
+      entry
     }: {
       correction: ReceiptCorrection;
       originalItems: ReceiptDetail['items'];
       entry: object;
-      signal: AbortSignal;
     }) => {
+      const signal = getSessionSignal();
       if (!isCurrentDetail(entry, signal))
         throw new DOMException('Receipt access changed', 'AbortError');
       if (correction.items !== undefined) {
-        const latest = await getDetail(signal);
+        const latest = await getDetail();
         if (!isCurrentDetail(entry, signal))
           throw new DOMException('Receipt access changed', 'AbortError');
         if (
@@ -283,15 +287,14 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
           throw new ReceiptItemsConflict();
         }
       }
-      return requestPrivateResource(
-        (options) =>
-          updateReceipt({ householdId, receiptId, receiptCorrection: correction }, options),
-        signal
+      return requestPrivateResource((options) =>
+        updateReceipt({ householdId, receiptId, receiptCorrection: correction }, options)
       );
     },
     retry: false,
     // Cancel reads before applying the PATCH result so an older GET cannot overwrite it.
-    onSuccess: async (updated, { signal, entry }) => {
+    onSuccess: async (updated, { entry }) => {
+      const signal = getSessionSignal();
       if (!isCurrentDetail(entry, signal)) return;
       await queryClient.cancelQueries({ queryKey: detailKey, exact: true });
       if (!isCurrentDetail(entry, signal)) return;
@@ -303,8 +306,8 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
       void queryClient.invalidateQueries({ queryKey: ['monthlyReport', householdId] });
       void queryClient.invalidateQueries({ queryKey: ['spendingTrend', householdId] });
     },
-    onError: async (error, { signal, entry }) => {
-      if (signal.aborted) return;
+    onError: async (error, { entry }) => {
+      const signal = getSessionSignal();
       if (error instanceof HttpError && error.status === 409) {
         void queryClient.invalidateQueries({ queryKey: detailKey, exact: true });
       }
@@ -317,7 +320,7 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
       queryClient.setQueryData(detailKey, null);
       queryClient.removeQueries({ queryKey: ['receipts', householdId], type: 'inactive' });
       setEditSnapshot(null);
-      await handleReceiptDenial(error, signal);
+      handleReceiptDenial(error, signal);
     },
     onSettled: () => {
       submitting.current = false;
@@ -338,7 +341,7 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
     const signal = getSessionSignal();
     if (!isCurrentDetail(entry, signal)) return;
     submitting.current = true;
-    save.mutate({ correction, originalItems: editSnapshot.items, entry, signal });
+    save.mutate({ correction, originalItems: editSnapshot.items, entry });
   }
 
   function cancelCorrection() {
@@ -410,7 +413,9 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
             </div>
             <div>
               <dt className="text-gray-600">Kaufdatum</dt>
-              <dd>{formatDate(data.purchase_date)}</dd>
+              <dd>
+                {data.purchase_date ? formatDate(data.purchase_date) : 'Kein Kaufdatum erkannt'}
+              </dd>
             </div>
             <div>
               <dt className="text-gray-600">Total</dt>

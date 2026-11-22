@@ -21,9 +21,9 @@ export function isPrivateResourceUnavailable(error: unknown): boolean {
 
 export async function requestPrivateResource<T>(
   request: (options: RequestOpts) => Promise<T>,
-  signal: AbortSignal
+  signal?: AbortSignal
 ): Promise<T> {
-  signal.throwIfAborted();
+  signal?.throwIfAborted();
   const authenticatedFetch = defaults.fetch;
   if (!authenticatedFetch) throw new Error('The authenticated API client is unavailable.');
 

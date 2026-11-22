@@ -1,10 +1,10 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { HttpError } from '@oazapfts/runtime';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { createHousehold, joinHousehold, listHouseholds } from '@/api';
-import { useUploadSignal } from '@/components/AuthenticatedSession';
+import { useSessionMutation } from '@/components/AuthenticatedSession';
 import { householdRoleLabel } from '@/householdRoleLabel';
 
 function joinErrorMessage(error: Error) {
@@ -32,29 +32,25 @@ export function HomePage() {
   const [code, setCode] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const getSessionSignal = useUploadSignal();
   const householdsQueryKey = ['households', user?.userId] as const;
   const households = useQuery({
     queryKey: householdsQueryKey,
     queryFn: ({ signal }) => listHouseholds({ signal }),
     enabled: user?.userId !== undefined
   });
-  const create = useMutation({
-    mutationFn: ({ householdName, signal }: { householdName: string; signal: AbortSignal }) =>
-      createHousehold({ createHouseholdRequest: { name: householdName } }, { signal }),
-    onSuccess: (household, { signal }) => {
-      if (signal.aborted) return;
+  const create = useSessionMutation({
+    mutationFn: (householdName: string) =>
+      createHousehold({ createHouseholdRequest: { name: householdName } }),
+    onSuccess: (household) => {
       const invalidation = queryClient.invalidateQueries({ queryKey: householdsQueryKey });
       navigate(`/households/${household.id}`);
       return invalidation;
     }
   });
-  const join = useMutation({
-    mutationFn: ({ inviteCode, signal }: { inviteCode: string; signal: AbortSignal }) =>
-      joinHousehold({ joinRequest: { code: inviteCode } }, { signal }),
+  const join = useSessionMutation({
+    mutationFn: (inviteCode: string) => joinHousehold({ joinRequest: { code: inviteCode } }),
     retry: false,
-    onSuccess: (household, { signal }) => {
-      if (signal.aborted) return;
+    onSuccess: (household) => {
       const invalidation = queryClient.invalidateQueries({ queryKey: householdsQueryKey });
       navigate(`/households/${household.id}`);
       return invalidation;
@@ -104,7 +100,7 @@ export function HomePage() {
           className="flex flex-col gap-2 sm:flex-row sm:items-end"
           onSubmit={(e) => {
             e.preventDefault();
-            join.mutate({ inviteCode: code, signal: getSessionSignal() });
+            join.mutate(code);
           }}
         >
           <div className="flex-1">
@@ -141,7 +137,7 @@ export function HomePage() {
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate({ householdName: name.trim(), signal: getSessionSignal() });
+            create.mutate(name.trim());
           }}
         >
           <input

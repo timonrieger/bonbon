@@ -1,17 +1,15 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { HttpError } from '@oazapfts/runtime';
-import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   createInvite,
-  createReceipt,
   type Household,
   type HouseholdList,
   type InviteCode,
   leaveHousehold,
   listMembers,
-  listReceipts,
   type Member,
   type MemberList,
   MyRole,
@@ -19,25 +17,18 @@ import {
   removeMember,
   transferOwnership
 } from '@/api';
-import { denyHouseholdAccess, householdAccessKey, useHouseholdAccess } from '@/api/householdAccess';
+import { requestPrivateResource } from '@/api/privateQuery';
+import { useSessionMutation, useSessionSignal } from '@/components/AuthenticatedSession';
+import { HouseholdReceiptList, useHouseholdReceiptList } from '@/components/HouseholdReceiptList';
+import { ReceiptUploadSection } from '@/components/ReceiptUploadSection';
 import {
-  isPrivateResourceUnavailable,
-  readPrivateResource,
-  requestPrivateResource
-} from '@/api/privateQuery';
-import { formatBytes, prepareReceiptImage } from '@/api/receiptImage';
-import {
-  formatDate,
-  formatRappen,
-  formatUploadTimestamp,
-  isReceiptProcessing,
-  RECEIPT_POLL_ERROR_INTERVAL,
-  RECEIPT_POLL_INTERVAL,
-  uploadToS3
-} from '@/api/receipts';
-import { useUploadSignal } from '@/components/AuthenticatedSession';
-import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
-import { ReceiptStatusBadge } from '@/components/ReceiptStatusBadge';
+  denyHouseholdAccess,
+  handleHouseholdAccessError,
+  householdAccessKey,
+  readHouseholdResource
+} from '@/features/households/householdAccess';
+import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
+import { useReceiptUpload } from '@/features/receipts/useReceiptUpload';
 import { householdRoleLabel } from '@/householdRoleLabel';
 
 export function HouseholdPage() {
@@ -50,24 +41,20 @@ function HouseholdContent({ householdId }: { householdId: string }) {
   const { user } = useAuthenticator((context) => [context.user]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const getUploadSignal = useUploadSignal();
+  const getSessionSignal = useSessionSignal();
 
   const household = useHouseholdAccess(householdId);
-  const uploadKey = ['receiptUpload', householdId] as const;
   const leaveKey = ['leaveHousehold', householdId] as const;
-  const activeUpload = useIsMutating({ mutationKey: uploadKey, exact: true }) > 0;
   const activeLeave = useIsMutating({ mutationKey: leaveKey, exact: true }) > 0;
   const members = useQuery({
     queryKey: ['householdMembers', householdId],
-    queryFn: async ({ signal }) => {
-      const data = await readPrivateResource(
+    queryFn: ({ signal }) =>
+      readHouseholdResource(
+        queryClient,
+        householdId,
         (options) => listMembers({ householdId }, options),
         signal
-      );
-      signal.throwIfAborted();
-      if (data === null) denyHouseholdAccess(queryClient, householdId);
-      return data;
-    },
+      ),
     enabled: Boolean(household.data)
   });
 
@@ -81,146 +68,29 @@ function HouseholdContent({ householdId }: { householdId: string }) {
   const removeMemberButtonRef = useRef<HTMLButtonElement>(null);
   const removeMemberSubmissionRef = useRef(false);
   const membersHeadingRef = useRef<HTMLHeadingElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const preparation = useRef<AbortController | null>(null);
-  const submitting = useRef(false);
 
-  useLayoutEffect(() => {
-    const controller = new AbortController();
-    preparation.current = controller;
-    return () => controller.abort();
-  }, []);
-
-  function ensureHouseholdAccess(id: string) {
-    if (!queryClient.getQueryData(householdAccessKey(id))) {
-      throw new Error('Du hast keinen Zugriff mehr auf diesen Haushalt.');
-    }
-  }
-
-  const upload = useMutation({
-    mutationKey: uploadKey,
-    mutationFn: async ({
-      householdId,
-      file,
-      signal,
-      preparationSignal
-    }: {
-      householdId: string;
-      file: File;
-      signal: AbortSignal;
-      preparationSignal: AbortSignal;
-    }) => {
-      const prepared = await prepareReceiptImage(file, preparationSignal);
-      preparationSignal.throwIfAborted();
-      ensureHouseholdAccess(householdId);
-      setPreparing(false);
-
-      // Sign the exact MIME type and size of the file sent to S3.
-      const receiptUpload = await requestPrivateResource(
-        (options) =>
-          createReceipt(
-            {
-              householdId,
-              createReceiptRequest: {
-                content_type: prepared.contentType,
-                size_bytes: prepared.file.size
-              }
-            },
-            options
-          ),
-        signal
-      );
-
-      // Step 2: unauthenticated PUT — send raw bytes to S3 with all backend-supplied headers.
-      signal.throwIfAborted();
-      ensureHouseholdAccess(householdId);
-      await uploadToS3(receiptUpload, prepared.file, signal);
-      return { completedAt: Date.now(), originalSize: file.size, uploadedSize: prepared.file.size };
-    },
-    onSettled: () => {
-      submitting.current = false;
-      setPreparing(false);
-    },
-    onError: (error, { signal }) => {
-      if (!signal.aborted && isPrivateResourceUnavailable(error)) {
-        denyHouseholdAccess(queryClient, householdId);
-      }
-    },
-    onSuccess: (_, { householdId, signal }) => {
-      if (signal.aborted) return;
-      setFile(null);
-      void queryClient.invalidateQueries({ queryKey: ['receipts', householdId] });
-    }
-  });
-
-  const receipts = useQuery({
-    queryKey: ['receipts', householdId],
-    queryFn: async ({ signal }) => {
-      const data = await readPrivateResource(
-        (options) => listReceipts({ householdId }, options),
-        signal
-      );
-      signal.throwIfAborted();
-      if (data === null) denyHouseholdAccess(queryClient, householdId);
-      return data;
-    },
-    enabled: Boolean(household.data),
-    retry: false,
-    refetchIntervalInBackground: false,
-    refetchInterval: ({ state }) => {
-      // Leave time for a final list request after the server's abandonment cutoff.
-      const processing = state.data?.receipts.some((item) =>
-        isReceiptProcessing(item, RECEIPT_POLL_ERROR_INTERVAL)
-      );
-      const refreshFailed = state.status === 'error';
-      const recoveringAfterUpload =
-        refreshFailed &&
-        state.data !== null &&
-        upload.data !== undefined &&
-        state.dataUpdatedAt < upload.data.completedAt &&
-        Date.now() - upload.data.completedAt < 60_000;
-
-      if (!processing && !recoveringAfterUpload) return false;
-      return refreshFailed ? RECEIPT_POLL_ERROR_INTERVAL : RECEIPT_POLL_INTERVAL;
-    }
-  });
-
-  function handleUpload() {
-    if (
-      !file ||
-      !preparation.current ||
-      submitting.current ||
+  function isLeavePending() {
+    return (
       leaveSubmissionRef.current ||
-      queryClient.isMutating({ mutationKey: uploadKey, exact: true }) ||
-      queryClient.isMutating({ mutationKey: leaveKey, exact: true })
-    )
-      return;
-
-    const signal = getUploadSignal();
-    submitting.current = true;
-    setPreparing(true);
-    upload.mutate({
-      householdId,
-      file,
-      signal,
-      preparationSignal: AbortSignal.any([signal, preparation.current.signal])
-    });
+      queryClient.isMutating({ mutationKey: leaveKey, exact: true }) > 0
+    );
   }
 
-  const leave = useMutation({
+  const receiptUpload = useReceiptUpload(householdId, isLeavePending);
+  const { activeUpload } = receiptUpload;
+  const receiptList = useHouseholdReceiptList(
+    householdId,
+    Boolean(household.data),
+    receiptUpload.upload.data?.completedAt
+  );
+
+  const leave = useSessionMutation({
     mutationKey: leaveKey,
-    mutationFn: (signal: AbortSignal) =>
-      requestPrivateResource((options) => leaveHousehold({ householdId }, options), signal),
+    mutationFn: () => requestPrivateResource((options) => leaveHousehold({ householdId }, options)),
     retry: false,
-    onError: (error, signal) => {
-      if (!signal.aborted && isPrivateResourceUnavailable(error)) {
-        denyHouseholdAccess(queryClient, householdId);
-      }
-    },
-    onSuccess: (_, signal) => {
-      if (signal.aborted) return;
-      preparation.current?.abort();
+    onError: handleAccessError,
+    onSuccess: () => {
+      receiptUpload.abortPreparation();
       const householdsQueryKey = ['households', user?.userId] as const;
       denyHouseholdAccess(queryClient, householdId);
       navigate('/', { replace: true });
@@ -232,11 +102,11 @@ function HouseholdContent({ householdId }: { householdId: string }) {
       leaveSubmissionRef.current = false;
     }
   });
-  function refreshAccessAfterMemberMutationError(
-    error: Error,
-    { signal }: { signal: AbortSignal }
-  ) {
-    if (signal.aborted || !isPrivateResourceUnavailable(error)) return;
+  function handleAccessError(error: Error) {
+    handleHouseholdAccessError(queryClient, householdId, error, getSessionSignal());
+  }
+
+  function refreshAccessAfterMemberMutationError(error: Error) {
     // A role change or a missing target member can also return 403 or 404.
     if (error instanceof HttpError && (error.status === 403 || error.status === 404)) {
       void Promise.all([
@@ -244,21 +114,20 @@ function HouseholdContent({ householdId }: { householdId: string }) {
         queryClient.invalidateQueries({ queryKey: ['householdMembers', householdId] })
       ]);
     } else {
-      denyHouseholdAccess(queryClient, householdId);
+      handleAccessError(error);
     }
   }
 
-  const transfer = useMutation({
-    mutationFn: ({ userId, signal }: { userId: string; signal: AbortSignal }) =>
-      requestPrivateResource(
-        (options) =>
-          transferOwnership({ householdId, transferOwnerRequest: { user_id: userId } }, options),
-        signal
+  const transfer = useSessionMutation({
+    mutationFn: (userId: string) =>
+      requestPrivateResource((options) =>
+        transferOwnership({ householdId, transferOwnerRequest: { user_id: userId } }, options)
       ),
     retry: false,
     onError: refreshAccessAfterMemberMutationError,
-    onSuccess: async (updatedMembers, { signal }) => {
-      if (signal.aborted || !queryClient.getQueryData(householdAccessKey(householdId))) return;
+    onSuccess: async (updatedMembers) => {
+      const signal = getSessionSignal();
+      if (!queryClient.getQueryData(householdAccessKey(householdId))) return;
       const membersQueryKey = ['householdMembers', householdId] as const;
       const householdQueryKey = householdAccessKey(householdId);
       const householdsQueryKey = ['households', user?.userId] as const;
@@ -302,13 +171,14 @@ function HouseholdContent({ householdId }: { householdId: string }) {
       transferSubmissionRef.current = false;
     }
   });
-  const remove = useMutation({
-    mutationFn: ({ userId, signal }: { userId: string; signal: AbortSignal }) =>
-      requestPrivateResource((options) => removeMember({ householdId, userId }, options), signal),
+  const remove = useSessionMutation({
+    mutationFn: (userId: string) =>
+      requestPrivateResource((options) => removeMember({ householdId, userId }, options)),
     retry: false,
     onError: refreshAccessAfterMemberMutationError,
-    onSuccess: async (_, { userId, signal }) => {
-      if (signal.aborted || !queryClient.getQueryData(householdAccessKey(householdId))) return;
+    onSuccess: async (_, userId) => {
+      const signal = getSessionSignal();
+      if (!queryClient.getQueryData(householdAccessKey(householdId))) return;
       const membersQueryKey = ['householdMembers', householdId] as const;
       await queryClient.cancelQueries({ queryKey: membersQueryKey });
       if (signal.aborted || !queryClient.getQueryData(householdAccessKey(householdId))) return;
@@ -335,35 +205,24 @@ function HouseholdContent({ householdId }: { householdId: string }) {
   }, [memberToRemove, remove.isSuccess]);
 
   function confirmLeave() {
-    if (
-      leaveSubmissionRef.current ||
-      submitting.current ||
-      queryClient.isMutating({ mutationKey: leaveKey, exact: true }) ||
-      queryClient.isMutating({ mutationKey: uploadKey, exact: true })
-    )
-      return;
+    if (isLeavePending() || receiptUpload.isUploadPending()) return;
 
     leaveSubmissionRef.current = true;
-    leave.mutate(getUploadSignal());
+    leave.mutate();
   }
 
   function confirmTransfer() {
     if (!selectedMember || transferSubmissionRef.current || transfer.isPending) return;
 
     transferSubmissionRef.current = true;
-    transfer.mutate({ userId: selectedMember.user_id, signal: getUploadSignal() });
+    transfer.mutate(selectedMember.user_id);
   }
 
   function confirmRemoveMember() {
     if (!memberToRemove || removeMemberSubmissionRef.current || remove.isPending) return;
 
     removeMemberSubmissionRef.current = true;
-    remove.mutate({ userId: memberToRemove.user_id, signal: getUploadSignal() });
-  }
-
-  function handleFileChange(next: File | null) {
-    upload.reset();
-    setFile(next);
+    remove.mutate(memberToRemove.user_id);
   }
 
   if (household.isPending) return <p>Laden…</p>;
@@ -386,7 +245,6 @@ function HouseholdContent({ householdId }: { householdId: string }) {
   }
 
   const isOwner = household.data.my_role === MyRole.Owner;
-  const receiptRows = receipts.data?.receipts;
 
   return (
     <div className="flex flex-col gap-6">
@@ -486,122 +344,12 @@ function HouseholdContent({ householdId }: { householdId: string }) {
         <InviteCodeSection key={householdId} householdId={householdId} />
       </section>
 
-      <section aria-labelledby="upload-heading">
-        <h2 id="upload-heading" className="mb-3 text-lg font-medium">
-          Kassenzettel hochladen
-        </h2>
-
-        <ReceiptFilePicker
-          file={file}
-          onChange={handleFileChange}
-          disabled={activeUpload || activeLeave || showLeaveDialog}
-        />
-
-        {file && (
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={activeUpload || activeLeave || showLeaveDialog}
-            className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto disabled:opacity-50"
-          >
-            {upload.isPending ? 'Upload läuft…' : 'Hochladen'}
-          </button>
-        )}
-
-        {upload.isPending && (
-          <p role="status" className="mt-2 text-sm text-gray-600">
-            {upload.isPaused
-              ? 'Der Upload wartet auf eine Verbindung.'
-              : preparing
-                ? 'Das Bild wird vorbereitet…'
-                : 'Der Kassenzettel wird hochgeladen…'}
-          </p>
-        )}
-
-        {upload.isSuccess && (
-          <p role="status" className="mt-2 text-sm text-green-700">
-            Kassenzettel erfolgreich hochgeladen. Die Verarbeitung läuft automatisch im Hintergrund.
-            {upload.data.uploadedSize < upload.data.originalSize && (
-              <span className="block">
-                Bildgrösse von {formatBytes(upload.data.originalSize)} auf{' '}
-                {formatBytes(upload.data.uploadedSize)} reduziert.
-              </span>
-            )}
-          </p>
-        )}
-
-        {upload.isError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {upload.error.message}
-          </p>
-        )}
-      </section>
-
-      <section aria-labelledby="receipts-heading">
-        <h2 id="receipts-heading" className="mb-3 text-lg font-medium">
-          Kassenzettel
-        </h2>
-
-        {receipts.isPending && (
-          <p role="status" className="text-sm text-gray-600">
-            Kassenzettel werden geladen…
-          </p>
-        )}
-
-        {(receipts.isError || receipts.data === null) && (
-          <p role={receiptRows ? 'status' : 'alert'} className="text-sm text-red-600">
-            {receiptRows
-              ? 'Die Kassenzettel konnten nicht aktualisiert werden.'
-              : 'Die Kassenzettel konnten nicht geladen werden.'}
-          </p>
-        )}
-
-        {receiptRows?.length === 0 && (
-          <p className="text-sm text-gray-500">Noch keine Kassenzettel vorhanden.</p>
-        )}
-
-        {receiptRows && receiptRows.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {receiptRows.map((receipt) => {
-              const store = receipt.store?.trim();
-              const uploadedAt =
-                !store || !receipt.purchase_date || receipt.total_rappen === null
-                  ? formatUploadTimestamp(receipt.created_at)
-                  : null;
-              return (
-                <li key={receipt.id}>
-                  <Link
-                    to={`/households/${householdId}/receipts/${receipt.id}`}
-                    className="flex flex-col gap-1 rounded border border-gray-200 px-4 py-3 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="break-words font-medium">
-                        {store || 'Geschäft nicht erkannt'}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        <span className="sr-only">Kaufdatum: </span>
-                        {formatDate(receipt.purchase_date)}
-                      </span>
-                      {uploadedAt && (
-                        <span className="text-sm text-gray-500">
-                          Hochgeladen am <time dateTime={receipt.created_at}>{uploadedAt}</time>
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-3 sm:gap-4">
-                      <span className="text-sm font-medium">
-                        <span className="sr-only">Total: </span>
-                        {formatRappen(receipt.total_rappen)}
-                      </span>
-                      <ReceiptStatusBadge status={receipt.status} />
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <ReceiptUploadSection
+        householdId={householdId}
+        disabled={activeUpload || activeLeave || showLeaveDialog}
+        workflow={receiptUpload}
+      />
+      <HouseholdReceiptList householdId={householdId} list={receiptList} />
       {showLeaveDialog && (
         <ConfirmDialog
           title="Haushalt verlassen?"
@@ -811,21 +559,17 @@ function ConfirmDialog({
 }
 
 function InviteCodeSection({ householdId }: { householdId: string }) {
-  const getUploadSignal = useUploadSignal();
+  const getSessionSignal = useSessionSignal();
   const queryClient = useQueryClient();
   const [copyStatus, setCopyStatus] = useState<{
     invite: InviteCode;
     status: 'copied' | 'error';
   } | null>(null);
-  const inviteMutation = useMutation({
-    mutationFn: (signal: AbortSignal) =>
-      requestPrivateResource((options) => createInvite({ householdId }, options), signal),
+  const inviteMutation = useSessionMutation({
+    mutationFn: () => requestPrivateResource((options) => createInvite({ householdId }, options)),
     onMutate: () => setCopyStatus(null),
-    onError: (error, signal) => {
-      if (!signal.aborted && isPrivateResourceUnavailable(error)) {
-        denyHouseholdAccess(queryClient, householdId);
-      }
-    }
+    onError: (error) =>
+      handleHouseholdAccessError(queryClient, householdId, error, getSessionSignal())
   });
   const invite = inviteMutation.data;
   const displayedCopyStatus =
@@ -846,7 +590,7 @@ function InviteCodeSection({ householdId }: { householdId: string }) {
     <div className="mt-4">
       <button
         type="button"
-        onClick={() => inviteMutation.mutate(getUploadSignal())}
+        onClick={() => inviteMutation.mutate()}
         disabled={inviteMutation.isPending}
         className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
       >

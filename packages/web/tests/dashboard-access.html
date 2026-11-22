@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Dashboard household access browser tests</title>
+  <main id="app"></main>
+  <pre id="result">PENDING</pre>
+  <script type="module">
+    import { HttpError } from '@oazapfts/runtime';
+    import { createElement, StrictMode } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { MemoryRouter, Route, Routes, useNavigate } from 'react-router';
+    import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+    import { defaults } from '@/api';
+    import { HouseholdReceiptList, useHouseholdReceiptList } from '@/components/HouseholdReceiptList';
+    import { DashboardPage } from '@/pages/DashboardPage';
+    import {
+      handleHouseholdAccessError,
+      householdAccessKey,
+      readHouseholdResource
+    } from '@/features/households/householdAccess';
+    import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
+
+    const household = { id:'h', name:'Private household', my_role:'owner' };
+    const key = householdAccessKey('h');
+    const root = document.querySelector('#app');
+    const report = document.querySelector('#result');
+    let membership = 200;
+    let monthlyStatus = 200;
+    let holdHousehold = false;
+    let holdTrend = false;
+    let releaseHousehold;
+    let releaseTrend;
+    let trendSignal;
+    let reportCalls = 0;
+    let householdCalls = 0;
+    const requestedMonths = [];
+
+    defaults.baseUrl = 'https://api.invalid';
+    defaults.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      const path = url.pathname;
+      if (path === '/households/h') {
+        householdCalls++;
+        if (holdHousehold) await new Promise(resolve => { releaseHousehold = resolve; });
+        return Response.json(membership === 200 ? household : {}, { status: membership });
+      }
+      if (path.endsWith('/reports/monthly')) {
+        reportCalls++;
+        return Response.json({by_category:[], by_store:[]}, {status:monthlyStatus});
+      }
+      if (path.endsWith('/reports/trend')) {
+        reportCalls++;
+        if (holdTrend) {
+          trendSignal = init.signal;
+          await new Promise(resolve => { releaseTrend = resolve; });
+        }
+        return Response.json({months:[]});
+      }
+      if (path.endsWith('/receipts')) {
+        requestedMonths.push(url.searchParams.get('month'));
+        return Response.json({receipts:[]});
+      }
+      if (path.endsWith('/members')) return Response.json({members:[]});
+      throw new Error('Unexpected request: ' + path);
+    };
+
+    const client = new QueryClient();
+    let navigate;
+    let setReceiptMonth;
+    function Capture() {
+      navigate = useNavigate();
+      return null;
+    }
+    function HouseholdProbe() {
+      const household = useHouseholdAccess('h');
+      const list = useHouseholdReceiptList('h', Boolean(household.data), undefined);
+      setReceiptMonth = list.setSelectedMonth;
+      return household.data && createElement(
+        'section',
+        null,
+        createElement('p', null, household.data.name),
+        createElement(HouseholdReceiptList, {householdId:'h', list})
+      );
+    }
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    async function until(predicate, message) {
+      const end = Date.now() + 3500;
+      while (!predicate()) {
+        assert(Date.now() < end, message);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    function seed() {
+      client.setQueryData(key, household);
+      client.setQueryData(['households','alice'], {households:[household,{id:'other'}]});
+      client.setQueryData(['receipts','h','2026-11'], {receipts:[]});
+      client.setQueryData(['receipt','h','r'], {id:'r'});
+      client.setQueryData(['monthlyReport','h','2026-11'], {by_category:[],by_store:[]});
+      client.setQueryData(['spendingTrend','h',6], {months:[]});
+      client.setQueryData(['spendingTrend','other',6], {months:[]});
+    }
+    function assertDenied() {
+      assert(!root.textContent.includes(household.name) && !root.textContent.includes('Ausgaben nach Kategorie'), 'Private dashboard content survived denial');
+      assert(client.getQueryData(key) === null, 'Canonical key did not retain denial');
+      for (const kind of ['receipt','receipts','monthlyReport','spendingTrend']) {
+        assert(!client.getQueryCache().findAll({queryKey:[kind,'h']}).some(query => query.state.data != null), 'Denial retained private ' + kind);
+      }
+      assert(client.getQueryData(['spendingTrend','other',6]), 'Denial cleared unrelated household');
+      assert(client.getQueryData(['households','alice']).households.length === 1, 'Membership list retained denied household');
+    }
+    async function run() {
+      const cancelled = new AbortController();
+      const denied = new HttpError(403, undefined, new Headers());
+      client.setQueryData(key, household);
+      let rejectRequest;
+      const result = readHouseholdResource(
+        client,
+        'h',
+        () => new Promise((_, reject) => { rejectRequest = reject; }),
+        cancelled.signal
+      ).catch(error => error);
+      cancelled.abort();
+      rejectRequest(denied);
+      assert((await result).name === 'AbortError', 'Late denial did not propagate cancellation');
+      handleHouseholdAccessError(client, 'h', denied, cancelled.signal);
+      assert(client.getQueryData(key)?.id === 'h', 'Aborted request evicted valid access data');
+
+      createRoot(root).render(
+        createElement(StrictMode, null,
+          createElement(QueryClientProvider, { client },
+            createElement(MemoryRouter, null,
+              createElement(Capture),
+              createElement(Routes, null,
+                createElement(Route, { path: '/', element: createElement('div', null, 'Home') }),
+                createElement(Route, { path: '/households/:householdId', element: createElement(HouseholdProbe) }),
+                createElement(Route, { path: '/households/:householdId/dashboard', element: createElement(DashboardPage) })
+              )
+            )
+          )
+        )
+      );
+      await until(() => navigate, 'App did not mount');
+      seed();
+      navigate('/households/h');
+      await until(() => root.textContent.includes(household.name), 'Household did not load');
+      await until(() => root.textContent.includes('Noch keine Kassenzettel vorhanden.'), 'Extracted receipt list did not load');
+      const monthInput = root.querySelector('input[type="month"]');
+      assert(monthInput.min === '0001-01' && monthInput.max === '9999-11', 'Month input bounds differ from the backend');
+      for (const month of ['0000-01', '9999-12']) {
+        const previousRequests = requestedMonths.length;
+        // Exercise validation even if the browser's native picker sanitizes the input.
+        setReceiptMonth(month);
+        await until(() => monthInput.getAttribute('aria-invalid') === 'true', 'Invalid month did not show a validation error');
+        assert(root.querySelector('[role="alert"]')?.textContent.includes('0001-01 bis 9999-11'), 'Month error does not describe the supported range');
+        await client.invalidateQueries({queryKey:['receipts','h']});
+        assert(requestedMonths.length === previousRequests, 'Invalid month triggered a receipt request');
+      }
+      for (const month of ['0001-01', '9999-11', '2026-11']) {
+        setReceiptMonth(month);
+        await until(() => requestedMonths.at(-1) === month && monthInput.getAttribute('aria-invalid') === 'false', 'Valid month did not filter: ' + month);
+      }
+      const allMonths = [...root.querySelectorAll('button')].find(button => button.textContent === 'Alle Monate');
+      allMonths.click();
+      await until(() => requestedMonths.at(-1) === null && monthInput.value === '', 'Clearing the filter did not request all months');
+      holdHousehold = true;
+      navigate('/households/h/dashboard');
+      await until(() => releaseHousehold, 'Dashboard did not revalidate membership');
+      assert(!root.textContent.includes(household.name) && reportCalls === 0, 'Dashboard used stale access or fetched reports before verifying');
+      holdHousehold = false;
+      releaseHousehold();
+      await until(() => root.textContent.includes(household.name) && reportCalls === 2, 'Verified dashboard did not load');
+      assert(!client.getQueryCache().find({queryKey:['household','h']}), 'Legacy household key still exists');
+      const callsBefore = householdCalls;
+      await client.invalidateQueries({queryKey:key});
+      assert(householdCalls === callsBefore + 1, 'Canonical invalidation did not refetch dashboard access');
+
+      holdTrend = true;
+      void client.invalidateQueries({queryKey:['spendingTrend','h']});
+      await until(() => releaseTrend, 'Could not hold in-flight report');
+      monthlyStatus = 404;
+      await client.invalidateQueries({queryKey:['monthlyReport','h']});
+      await until(() => root.textContent.includes('Dieser Haushalt ist nicht verfügbar.'), 'Report denial was not displayed');
+      assertDenied();
+      assert(trendSignal.aborted, 'Denial did not abort the in-flight report');
+      releaseTrend();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assertDenied();
+
+      navigate('/');
+      await until(() => root.textContent.includes('Home'), 'Home did not mount');
+      seed();
+      membership = 404;
+      const previousReports = reportCalls;
+      navigate('/households/h/dashboard');
+      await until(() => root.textContent.includes('Dieser Haushalt ist nicht verfügbar.'), 'Household denial was not displayed');
+      assertDenied();
+      assert(reportCalls === previousReports, 'Denied dashboard requested private reports');
+      report.textContent = 'PASS: month boundaries, invalid months sent no requests, cleared filter, shared key, cache eviction and cancellation';
+    }
+    run().catch(error => { report.textContent = String(error.stack ?? error); });
+  </script>
+</html>

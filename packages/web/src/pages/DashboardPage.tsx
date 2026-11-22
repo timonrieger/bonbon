@@ -1,5 +1,5 @@
 import { HttpError } from '@oazapfts/runtime';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
@@ -12,7 +12,9 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { getHousehold, getMonthlyReport, getSpendingTrend } from '@/api';
+import { getMonthlyReport, getSpendingTrend } from '@/api';
+import { readHouseholdResource } from '@/features/households/householdAccess';
+import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
 
 function toMonthValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -48,6 +50,11 @@ function shouldRetryReport(failureCount: number, error: Error) {
 export function DashboardPage() {
   // biome-ignore lint/style/noNonNullAssertion: the route always has :householdId
   const householdId = useParams().householdId!;
+  return <DashboardContent key={householdId} householdId={householdId} />;
+}
+
+function DashboardContent({ householdId }: { householdId: string }) {
+  const queryClient = useQueryClient();
   const [selectedMonth, setSelectedMonth] = useState(() => {
     return toMonthValue(new Date());
   });
@@ -59,20 +66,31 @@ export function DashboardPage() {
     year: 'numeric'
   }).format(selectedMonthDate);
 
-  const household = useQuery({
-    queryKey: ['household', householdId],
-    queryFn: () => getHousehold({ householdId })
-  });
+  const household = useHouseholdAccess(householdId);
+  const accessVerified = household.isFetchedAfterMount && household.isSuccess && !!household.data;
+
   const monthlyReport = useQuery({
     queryKey: ['monthlyReport', householdId, selectedMonth],
-    queryFn: () => getMonthlyReport({ householdId, month: selectedMonth }),
-    enabled: household.isSuccess,
+    queryFn: ({ signal }) =>
+      readHouseholdResource(
+        queryClient,
+        householdId,
+        (options) => getMonthlyReport({ householdId, month: selectedMonth }, options),
+        signal
+      ),
+    enabled: accessVerified,
     retry: shouldRetryReport
   });
   const spendingTrend = useQuery({
     queryKey: ['spendingTrend', householdId, 6],
-    queryFn: () => getSpendingTrend({ householdId, months: 6 }),
-    enabled: household.isSuccess,
+    queryFn: ({ signal }) =>
+      readHouseholdResource(
+        queryClient,
+        householdId,
+        (options) => getSpendingTrend({ householdId, months: 6 }, options),
+        signal
+      ),
+    enabled: accessVerified,
     retry: shouldRetryReport
   });
   const categoryData = [...(monthlyReport.data?.by_category ?? [])].sort(
@@ -81,12 +99,23 @@ export function DashboardPage() {
   const storeData = [...(monthlyReport.data?.by_store ?? [])].sort(
     (a, b) => b.total_rappen - a.total_rappen
   );
+  const trendMonths = spendingTrend.data?.months ?? [];
 
   function changeMonth(offset: number) {
     setSelectedMonth(toMonthValue(new Date(year, month - 1 + offset, 1)));
   }
 
-  if (household.isPending) return <p>Laden…</p>;
+  if (household.data === null) {
+    return (
+      <div className="text-red-600">
+        <p role="alert">Dieser Haushalt ist nicht verfügbar.</p>
+        <Link to="/" className="underline">
+          Zu meinen Haushalten
+        </Link>
+      </div>
+    );
+  }
+  if (!household.isFetchedAfterMount || household.isPending) return <p>Laden…</p>;
   if (household.isError) return <p className="text-red-600">{household.error.message}</p>;
   return (
     <main>
@@ -145,13 +174,10 @@ export function DashboardPage() {
             <h2 id="monthly-spending" className="font-semibold">
               Ausgaben pro Monat
             </h2>
-            {spendingTrend.isSuccess && spendingTrend.data.months.length > 0 ? (
+            {spendingTrend.isSuccess && trendMonths.length > 0 ? (
               <p className="mt-1 text-sm text-gray-600">
-                {formatMonth(spendingTrend.data.months[0].month, 'long')} bis{' '}
-                {formatMonth(
-                  spendingTrend.data.months[spendingTrend.data.months.length - 1].month,
-                  'long'
-                )}
+                {formatMonth(trendMonths[0].month, 'long')} bis{' '}
+                {formatMonth(trendMonths[trendMonths.length - 1].month, 'long')}
               </p>
             ) : null}
           </div>
@@ -159,18 +185,14 @@ export function DashboardPage() {
             <p className="text-sm text-gray-600">Monatsverlauf wird geladen…</p>
           ) : spendingTrend.isError ? (
             <p className="text-sm text-red-600">{reportErrorMessage(spendingTrend.error)}</p>
-          ) : spendingTrend.data.months.length === 0 ||
-            spendingTrend.data.months.every(({ total_rappen }) => total_rappen === 0) ? (
+          ) : trendMonths.every(({ total_rappen }) => total_rappen === 0) ? (
             <p className="text-sm text-gray-600">
               Für diesen Zeitraum liegen keine Auswertungsdaten vor.
             </p>
           ) : (
             <div role="img" aria-label="Säulendiagramm mit Ausgaben pro Monat in CHF">
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart
-                  data={spendingTrend.data.months}
-                  margin={{ top: 8, right: 8, bottom: 8, left: 8 }}
-                >
+                <BarChart data={trendMonths} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tickFormatter={(month: string) => formatMonth(month)} />
                   <YAxis tickFormatter={formatRappenAsChf} width={90} />

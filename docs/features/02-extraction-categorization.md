@@ -15,16 +15,21 @@
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-- `ReceiptPage.tsx` displays an extracted receipt and polls while processing is pending. A processed (`done`) receipt can be opened for editing. The page keeps the loaded image preview when renewing the presigned original link on demand.
-- `ReceiptCorrectionForm.tsx` edits the store, purchase date, total and existing item rows. Categories use the backend order from `listCategories`, with «Sonstiges» last. The total is edited independently of the items. Amounts accept negative values and are sent as integer Rappen. Quantities allow up to three decimal places within the database range.
-- The form compares edits with its starting snapshot. A PATCH omits untouched fields, sends `null` for cleared header fields or unit prices, and replaces the complete item list when an item is edited. A background refresh or a recoverable save failure keeps the draft intact. Cancelling discards the draft. Before replacing items, the frontend fetches the latest item list and refuses to apply an edit based on a changed snapshot. The user can discard the draft and review the current receipt. Another write can still occur between this check and PATCH. Closing that window requires a backend version precondition.
-- On success, the detail cache receives the corrected receipt and the household's receipt lists, monthly reports and spending trends are invalidated, including months affected by a purchase date change. Access denial removes the private detail from view.
+**Implemented** (#16, #26):
+
+- `src/components/ReceiptCorrectionForm.tsx`: correction form for auto-extracted receipt data
+  - Edits `store`, `purchase_date`, `total_rappen` and existing item rows
+  - Each item row edits `name`, `quantity`, `unit_price_rappen`, `amount_rappen` and `category`. The form uses the choices from `listCategories`.
+  - Validates fields locally and sends the generated `ReceiptCorrection` shape to `onSave`. Prices are entered in CHF and sent in integer Rappen, including negative amounts.
+  - A refetch of the same receipt keeps unsaved edits.
+- `src/pages/ReceiptPage.tsx` mounts the form for processed (`done`) receipts and saves through `updateReceipt`. The response updates the detail cache and invalidates the household's receipt lists, monthly reports and trends.
+- Before replacing items, the frontend checks the current item list against the draft's starting snapshot. A write between that check and PATCH can still overwrite a concurrent edit. Closing that window requires a backend version precondition.
 
 ### API (#26)
 
 | Route | Frontend function | What it does |
-|---|---|---|
-| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Omitted header fields stay unchanged and `null` clears them. An item list replaces all items, including an empty list. Omitted or `null` items stay unchanged. Returns the corrected `ReceiptDetail` |
+| --- | --- | --- |
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Omitted fields stay unchanged. `null` clears header fields, and an item list replaces all items. Returns the corrected `ReceiptDetail` |
 | `GET /categories` | `listCategories` | All category names, sorted, «Sonstiges» last; the same for every household |
 
 - 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
@@ -44,19 +49,20 @@
 - Category: `categorize()` from `bonbon/receipts/categories.py` (#42), called before the transaction because it loads its rules from the database once per container.
 
 **Implemented** (@Dam-Mil):
+
 - Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
 - Categorization: fixed category list + keyword rules seeded in migration 0006, and
   `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
   (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
 
 **Planned**:
+
 - Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
 
 ## Verification
 
 - On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
 - An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
-- Concurrent corrections still require a backend version precondition. The frontend snapshot check leaves a window for another write before PATCH.
 
 ## Rules
 

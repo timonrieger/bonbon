@@ -5,6 +5,7 @@ type ReceiptImageType = (typeof RECEIPT_IMAGE_TYPES)[number];
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 500 * 1024;
+const TARGET_LONG_EDGE = 2800;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const JPEG_SIGNATURE = [0xff, 0xd8, 0xff];
 
@@ -21,7 +22,9 @@ export function validateReceiptImage(
   if (!contentType) return { error: 'Nur JPG- und PNG-Dateien sind erlaubt.' };
   if (file.size === 0) return { error: 'Die Datei ist leer.' };
   if (file.size > MAX_UPLOAD_BYTES) {
-    return { error: `Die Datei ist zu gross (${formatBytes(file.size)}). Maximal erlaubt: 5 MB.` };
+    return {
+      error: `Die Datei ist zu gross (${formatBytes(file.size)}). Bitte wähle ein Foto mit höchstens 5 MB.`
+    };
   }
   return { contentType };
 }
@@ -72,28 +75,44 @@ export async function prepareReceiptImage(
     signal.throwIfAborted();
     if (file.size <= TARGET_BYTES) return { file, contentType };
 
-    // Keep narrow receipts legible. Only downscale when the short edge can stay at 1400 px.
     const longEdge = Math.max(bitmap.width, bitmap.height);
     const shortEdge = Math.min(bitmap.width, bitmap.height);
-    const scale = Math.min(1, Math.max(2800 / longEdge, 1400 / shortEdge));
+    // Cap the width loss on narrow receipts instead of requiring a fixed 1400 px short edge.
+    const preferredShortEdge = Math.min(1400, Math.max(640, shortEdge * 0.85));
+    const minimumShortEdge = Math.min(1100, Math.max(480, shortEdge * 0.75));
+    const scale = Math.min(
+      1,
+      Math.max(TARGET_LONG_EDGE / longEdge, preferredShortEdge / shortEdge)
+    );
+    const smallerScale = Math.min(scale, Math.max(scale * 0.8, minimumShortEdge / shortEdge));
     const canvas = document.createElement('canvas');
     try {
-      canvas.width = Math.round(bitmap.width * scale);
-      canvas.height = Math.round(bitmap.height * scale);
-      const context = canvas.getContext('2d', { alpha: false });
-      if (!context) throw new Error('Canvas unavailable');
+      function draw(atScale: number) {
+        canvas.width = Math.max(1, Math.round(bitmap.width * atScale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * atScale));
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) throw new Error('Canvas unavailable');
 
-      // JPEG cannot store transparency. Composite transparent areas over white.
-      context.fillStyle = '#fff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.imageSmoothingQuality = 'high';
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        // JPEG cannot store transparency. Composite transparent areas over white.
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      }
 
+      draw(scale);
       let output = await encodeJpeg(canvas, 0.9);
       signal.throwIfAborted();
       if (output.size > TARGET_BYTES) {
         // Encode from the same pixels to avoid accumulating JPEG artifacts.
         const candidate = await encodeJpeg(canvas, 0.84);
+        signal.throwIfAborted();
+        if (candidate.size < output.size) output = candidate;
+      }
+      if (output.size > TARGET_BYTES && smallerScale <= scale * 0.95) {
+        // Resize from the oriented original, never from a previously encoded JPEG.
+        draw(smallerScale);
+        const candidate = await encodeJpeg(canvas, 0.86);
         signal.throwIfAborted();
         if (candidate.size < output.size) output = candidate;
       }

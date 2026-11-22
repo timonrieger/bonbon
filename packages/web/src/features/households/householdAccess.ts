@@ -1,13 +1,13 @@
-import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getHousehold, type HouseholdList } from '@/api';
-import { readPrivateResource } from '@/api/privateQuery';
+import type { RequestOpts } from '@oazapfts/runtime';
+import type { QueryClient } from '@tanstack/react-query';
+import type { HouseholdList } from '@/api';
+import { isPrivateResourceUnavailable, readPrivateResource } from '@/api/privateQuery';
 
 export function householdAccessKey(householdId: string) {
   return ['householdAccess', householdId] as const;
 }
 
 const householdDataKeys = new Set([
-  'household',
   'householdMembers',
   'receipts',
   'receipt',
@@ -42,19 +42,27 @@ export function denyHouseholdAccess(
   });
 }
 
-export function useHouseholdAccess(householdId: string) {
-  const client = useQueryClient();
-  return useQuery({
-    queryKey: householdAccessKey(householdId),
-    refetchOnMount: 'always',
-    queryFn: async ({ signal }) => {
-      const household = await readPrivateResource(
-        (options) => getHousehold({ householdId }, options),
-        signal
-      );
-      signal.throwIfAborted();
-      if (household === null) denyHouseholdAccess(client, householdId, true);
-      return household;
-    }
-  });
+// For requests whose denial establishes that the household itself is unavailable.
+export async function readHouseholdResource<T>(
+  client: QueryClient,
+  householdId: string,
+  request: (options: RequestOpts) => Promise<T>,
+  signal: AbortSignal,
+  fromAccessQuery = false
+): Promise<T | null> {
+  const data = await readPrivateResource(request, signal);
+  signal.throwIfAborted();
+  if (data === null) denyHouseholdAccess(client, householdId, fromAccessQuery);
+  return data;
+}
+
+export function handleHouseholdAccessError(
+  client: QueryClient,
+  householdId: string,
+  error: unknown,
+  signal: AbortSignal
+) {
+  if (!signal.aborted && isPrivateResourceUnavailable(error)) {
+    denyHouseholdAccess(client, householdId);
+  }
 }
