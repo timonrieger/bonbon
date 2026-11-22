@@ -56,8 +56,17 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
 - S3 gateway endpoint so the database Lambda reaches S3 without NAT, created only if the default VPC has none (#27)
 
-**Planned**:
-- Textract mock mode for the load test
+**Local load test**:
+- Run `mise run load-test` to simulate 200 receipts through both worker record handlers. The
+  Textract response reuses `packages/api/tests/data/textract_migros.json`; its delay defaults to
+  3.3 seconds and can be changed with `BONBON_TEXTRACT_DELAY_SECONDS=1 mise run load-test`.
+- The test uses in-memory S3/SQS substitutes and `FakeDatabase`; it does not create AWS clients
+  or call AWS. It reports throughput, total duration, p95 completion time (including local
+  executor waiting), and failure rate. The mock tracks concurrent calls, capped at 10.
+- This proves the local worker-code path and its behavior under a bounded thread pool. It does
+  **not** prove the AWS targets of accepting 200 uploads/minute, processing them within 3 minutes,
+  or achieving API p95 below 1 second. It also cannot prove deployed S3/SQS/Lambda behavior,
+  CloudWatch metrics, deployed concurrency, Textract's actual throttling behavior, or OCR accuracy.
 
 ## Notes
 
@@ -65,4 +74,3 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - Every upload is tagged `status=pending` via `upload_headers`. The database worker removes the tag once the receipt has a final status (`done`, `duplicate` or `failed`), otherwise the lifecycle rule deletes the file after 7 days. A failed or duplicate receipt keeps its file too, so the app can still show it.
 - S3 lifecycle: Glacier Instant Retrieval after 30 days, delete never-processed uploads (tag `status=pending`) after 7 days, delete raw Textract results (`textract-results/`) after 30 days, abort incomplete multipart uploads after 1 day.
 - The worker sets `duplicate` only for the same file hash in the household. A failed receipt doesn't count: uploading the same file again processes it normally. Same store, date and total is not a duplicate; the receipt stays `done` (see [03](03-dashboard.md#rules)).
-- A Textract mock mode (realistic delay and rate limit) is needed for the load test.
