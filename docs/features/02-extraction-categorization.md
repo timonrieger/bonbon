@@ -51,17 +51,30 @@
 **Implemented** (@Dam-Mil):
 
 - Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
-- Categorization: fixed category list + keyword rules seeded in migration 0006, and
-  `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
+- Categorization uses the fixed category list and keyword rules seeded in migration 0006.
+  In `categorize()` (`bonbon/receipts/categories.py`), the match ending furthest right wins
   (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
+
+**Recognition quality** (#24): `mise run quality` compares stored Textract responses with
+ground truth in `packages/api/tests/data/<name>.expected.json` and reports the share of items
+correct per store (target ≥ 90 %) and typical errors. The stored Migros fixture scored
+**41/43 items (95 %)**, with the store and total correct. The fixture has no printed date,
+so it provides no measure of date recognition. Migration `0007` adds keyword rules for
+brands and product lines such as Ragusa, Twist, Bon Chef, Nivea and Cantadou.
+
+- Typical remaining errors (two on the Migros receipt): OCR abbreviations Textract can't expand
+  (`F Kug.` for Frey Kugeln → `Sonstiges`), and a descriptive suffix that hijacks the
+  rightmost-match rule (`M Apfelmus ohne Zucker` matches `zucker` → Grundnahrungsmittel instead
+  of Tiefkühl & Konserven).
 
 **Planned**:
 
-- Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
+- Run the full ~20-receipt set (#34) for a per-store figure across Migros, Coop, Aldi and Lidl;
+  the 95 % above is from the single Migros fixture used to tune the rules.
 
 ## Verification
 
-- On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
+- On 2026-11-20, a separate manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
 - An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
 
 ## Rules
