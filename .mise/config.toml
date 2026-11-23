@@ -38,6 +38,10 @@ description = "Run all pre-commit hooks on the whole repo"
 depends = ["//packages/api:test"]
 description = "Run all tests"
 
+[tasks."load-test"]
+depends = ["//packages/api:load-test"]
+description = "Run the local receipt-processing load test without AWS"
+
 [tasks.check]
 depends = ["lint", "test"]
 description = "Everything CI checks. Run before every commit and PR"

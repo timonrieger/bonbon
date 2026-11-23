@@ -13,6 +13,10 @@ description = "Install Python dependencies; asserts the lockfile with --locked u
 run = "uv run pytest"
 description = "Run backend tests (AWS is mocked with moto, no account needed)"
 
+[tasks."load-test"]
+run = "uv run python tests/run_load_test.py"
+description = "Run the local receipt-processing load test without AWS"
+
 [tasks.openapi]
 run = "uv run python -m bonbon.openapi > openapi.json"
 description = "Write openapi.json from the Powertools routes"
