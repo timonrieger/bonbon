@@ -23,7 +23,7 @@ FROM (VALUES
     ('crémecornet',   'Brot & Backwaren'),     -- fresh patisserie, beats 'cornet'
     -- Tiefkühl & Konserven
     ('bon chef',      'Tiefkühl & Konserven'),  -- ready-meal line (soups etc.)
-    ('spinat',        'Tiefkühl & Konserven'),
+    ('rahmspinat',    'Tiefkühl & Konserven'),  -- not plain 'spinat': fresh spinach is produce
     ('apfelmus',      'Tiefkühl & Konserven'),  -- fruit in a jar/can
     -- Fleisch & Fisch
     ('mostmöckli',    'Fleisch & Fisch'),
@@ -34,8 +34,7 @@ FROM (VALUES
     -- Grundnahrungsmittel (cooking staples: spice mixes, dry sauces, sugar)
     ('curry',         'Grundnahrungsmittel'),
     ('bratensauce',   'Grundnahrungsmittel'),   -- dry sauce powder, beats 'bon chef'
-    ('kristallzucker', 'Grundnahrungsmittel'),
-    ('kristallzucken', 'Grundnahrungsmittel'),  -- common Textract misread of 'Kristallzucker'
+    ('kristallzucken', 'Grundnahrungsmittel'),  -- Textract misread of 'Kristallzucker' ('zucker' covers the correct spelling)
     -- Früchte & Gemüse
     ('amandine',      'Früchte & Gemüse'),       -- potato variety
     -- Haushalt & Reinigung

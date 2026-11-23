@@ -3,8 +3,9 @@
 # [MISE] dir="{{ config_root }}/packages/api"
 # /// script
 # requires-python = ">=3.14"
-# dependencies = []
+# dependencies = ["pg8000"]
 # ///
+
 """Recognition-quality harness for the ~20 real receipts (issue #24).
 
 For every receipt it runs the real pipeline functions — parse_expense() and the categorize()
@@ -20,9 +21,11 @@ Inputs live in tests/data/:
   <name>.json            the raw Textract AnalyzeExpense response
   <name>.expected.json   ground truth: store, purchase_date, total_rappen, items[{name, category}]
 
-This reads nothing from AWS or the database: the categorize() rules are loaded from the seed
-migrations (the single source of truth for the deployed rules), so the harness measures exactly
-what the worker does. Run it after adding receipts or changing the rules.
+It uses the worker's own categorize() (so it can't drift from the deployed behavior) with the
+rules read from the migration files, and parse_expense() on the stored Textract JSON. Importing
+bonbon.receipts.categories pulls in bonbon.db, hence pg8000 as a script dependency; no database
+connection is opened (categorize() is called with explicit rules). Run it after adding receipts
+or changing the rules.
 """
 
 import json
@@ -35,27 +38,10 @@ API = Path(__file__).resolve().parents[2] / "packages" / "api"
 DATA = API / "tests" / "data"
 sys.path.insert(0, str(API / "src"))
 
+from bonbon.receipts.categories import categorize  # noqa: E402
 from bonbon.receipts.expense import parse_expense  # noqa: E402
 
 TARGET = 0.90
-DEFAULT_CATEGORY = "Sonstiges"
-
-
-def categorize(item_name: str, rules: list[tuple[str, str]]) -> str:
-    """Same logic as bonbon.receipts.categories.categorize(): the match ending furthest right
-    wins, ties broken by the longer keyword. Reimplemented here so the harness depends only on
-    expense.py (stdlib) and never imports bonbon.db / pg8000."""
-    name = item_name.casefold()
-    best: tuple[int, int] | None = None
-    best_category = DEFAULT_CATEGORY
-    for keyword, category in rules:
-        start = name.rfind(keyword)
-        if start == -1:
-            continue
-        rank = (start + len(keyword), len(keyword))
-        if best is None or rank > best:
-            best, best_category = rank, category
-    return best_category
 
 
 def load_seed_rules() -> list[tuple[str, str]]:
@@ -113,27 +99,28 @@ def main() -> int:
         date_hits += got_date == expected.get("purchase_date")
         total_hits += receipt.total_rappen == expected.get("total_rappen")
 
-        # Items: compare position by position against the ground truth.
-        got_items = receipt.items
+        # Items: match by name, not by position, so one missing or extra item doesn't shift
+        # every item after it. A parsed item is consumed once it matches, so a name that appears
+        # twice on the receipt (e.g. 'Poulet Schnitzel') needs two parsed copies to score twice.
         exp_items = expected.get("items", [])
+        remaining = list(receipt.items)
         per_store_total[store] = per_store_total.get(store, 0) + len(exp_items)
         per_store_correct.setdefault(store, 0)
 
-        for i, want in enumerate(exp_items):
-            got_name = got_items[i].name if i < len(got_items) else "<missing>"
-            got_cat = categorize(got_name, rules) if i < len(got_items) else "<missing>"
-            name_ok = got_name not in ("<missing>", "Unbekannter Artikel") and got_name.strip()
-            if name_ok and got_cat == want["category"]:
+        for want in exp_items:
+            match = next((it for it in remaining if it.name == want["name"]), None)
+            if match is None:
+                errors.append(ItemError(store, want["name"], "<not read>", want["category"]))
+                continue
+            remaining.remove(match)
+            got_cat = categorize(match.name, rules)
+            if got_cat == want["category"]:
                 per_store_correct[store] += 1
             else:
                 errors.append(ItemError(store, want["name"], got_cat, want["category"]))
 
-        extra = len(got_items) - len(exp_items)
-        if extra:
-            sign = "+" if extra > 0 else ""
-            errors.append(
-                ItemError(store, "item count", f"{sign}{extra} vs expected", str(len(exp_items)))
-            )
+        for extra in remaining:
+            errors.append(ItemError(store, extra.name, "<extra, not in ground truth>", "—"))
 
     _report(
         per_store_correct,
