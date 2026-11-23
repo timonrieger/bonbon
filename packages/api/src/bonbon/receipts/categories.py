@@ -35,16 +35,20 @@ def reset() -> None:
     _rules.cache_clear()
 
 
-def categorize(item_name: str) -> str:
+def categorize(item_name: str, rules: list[tuple[str, str]] | None = None) -> str:
     """Category name for one item; DEFAULT_CATEGORY if no keyword matches.
 
     The match ending furthest right wins (head noun of a German compound), ties broken by the
-    longer keyword.
+    longer keyword. `rules` defaults to the seeded rules from the database; the quality harness
+    (#24) passes the rules read from the migration files instead. The fallback is resolved in the
+    body, not as a default argument, so _rules() (and its query) isn't called at import time and
+    stays monkeypatchable in tests.
     """
+    rules = rules if rules is not None else _rules()
     name = item_name.casefold()
     best: tuple[int, int] | None = None
     best_category = DEFAULT_CATEGORY
-    for keyword, category in _rules():
+    for keyword, category in rules:
         start = name.rfind(keyword)  # last occurrence, so the match ends as far right as possible
         if start == -1:
             continue

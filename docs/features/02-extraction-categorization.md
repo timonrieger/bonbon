@@ -76,8 +76,22 @@
   `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
   (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
 
+**Implemented** (#24): `mise run quality` measures item recognition against a ground truth
+(`tests/data/<name>.expected.json`) and reports the share correct per store (target ≥ 90 %)
+plus the typical errors, for the report. On the Migros test receipt: **41/43 items = 95 %**;
+store and total correct, date not printed on this receipt (so date accuracy is still unmeasured
+until a receipt with a legible date is in the set). Migration `0007` adds the keyword rules this
+needed (brands and product lines Textract returns verbatim: Ragusa, Twist, Bon Chef, Nivea,
+Cantadou …).
+- Typical remaining errors (two on the Migros receipt): OCR abbreviations Textract can't expand
+  (`F Kug.` for Frey Kugeln → `Sonstiges`), and a descriptive suffix that hijacks the
+  rightmost-match rule (`M Apfelmus ohne Zucker` matches `zucker` → Grundnahrungsmittel instead
+  of Tiefkühl & Konserven).
+
 **Planned**:
-- Tune the rules against the ~20-receipt test set; target ≥ 90 % of items correct (#24)
+- Run the full ~20-receipt set (#34) for a per-store figure across Migros, Coop, Aldi and Lidl;
+  the 95 % above is one Migros receipt only and the rules are tuned to it.
+
 
 ## Rules
 
