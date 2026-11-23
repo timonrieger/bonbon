@@ -7,51 +7,29 @@
 - [x] Extracts store, date, items, unit prices and total (Textract AnalyzeExpense; accuracy is checked with the test set below)
 - [x] Two-line items: if Textract doesn't return a name, use the last line of the row's raw text (`EXPENSE_ROW`)
 - [x] Every item gets a category from the keyword rule table; no match → "Sonstiges" (rules + `categorize()` in #42; called by the database worker #38)
-- [ ] Manual correction of items, prices and categories (optional: categories only); API done (#26), UI wiring open
-- [ ] Corrections only update the database; nothing is trained
+- [x] Manual correction of store, purchase date, total, items, prices and categories
+- [x] Corrections only update the database; nothing is trained
 - [ ] Test set of ~20 real receipts from all four stores; target ≥ 90 % of items correct
 
 ## Implementation status
 
 ### Frontend (`packages/web`) — @RR02-rr
 
-**Implemented** (#16):
+**Implemented** (#16, #26):
 
 - `src/components/ReceiptCorrectionForm.tsx`: correction form for auto-extracted receipt data
-  - Displays and edits: `store` (text), `purchase_date` (date picker), item rows
-  - Each item row edits: `name`, `quantity`, `unit_price_rappen` (CHF), `amount_rappen` (CHF), `category`
-  - `total_rappen`, `status`, `image_url`, `position` are read-only (computed or backend-owned)
-  - Local validation: empty names/categories, invalid amounts, malformed date
-  - Error messages shown per field with `role="alert"`; form re-validates on change after first submit attempt
-  - `onSave(correction: ReceiptCorrection)` callback with the validated values converted
-    back to API units (Rappen, numbers, `null`) — parent is responsible for the PATCH call
-  - Save button is `disabled` until PATCH endpoint exists; no fake save, no mock
-  - Keyboard-navigable; each input has an associated `<label>` via `useId()`-based IDs
-  - Re-initialises when `receipt.id` changes (e.g. navigation between receipts); a refetch
-    of the same receipt keeps unsaved edits
-  - Form state (`ReceiptDraft`, prices in CHF) and the `ReceiptCorrection` stand-in for the
-    PATCH body live in the component file
-- `src/api/receipts.ts`: added the `formatRappen` helper
-
-**Backend ready** (#26): `GET /households/{id}/receipts/{id}` returns the generated
-`ReceiptDetail` the form takes (#18); items stay empty until the worker writes them (#22).
-
-**To wire up:**
-
-1. Replace the `ReceiptCorrection` stand-in in the component with the generated
-   `ReceiptCorrection` from `@/api`. Same shape, plus an optional `total_rappen`.
-2. In `HouseholdPage.tsx` (or a new `ReceiptPage`): render `<ReceiptCorrectionForm>` with
-   data from `useQuery(getReceipt)` and an `onSave` from `useMutation(updateReceipt)`; the
-   response is the corrected `ReceiptDetail`, so it can go straight into the query cache.
-3. Category field as a `<select>` from `useQuery(listCategories)`.
-4. Remove the `disabled` from the save button.
-5. Allow negative amounts (discounts, vouchers), the API accepts them.
+  - Edits `store`, `purchase_date`, `total_rappen` and existing item rows
+  - Each item row edits `name`, `quantity`, `unit_price_rappen`, `amount_rappen` and `category`. The form uses the choices from `listCategories`.
+  - Validates fields locally and sends the generated `ReceiptCorrection` shape to `onSave`. Prices are entered in CHF and sent in integer Rappen, including negative amounts.
+  - A refetch of the same receipt keeps unsaved edits.
+- `src/pages/ReceiptPage.tsx` mounts the form for processed (`done`) receipts and saves through `updateReceipt`. The response updates the detail cache and invalidates the household's receipt lists, monthly reports and trends.
+- Before replacing items, the frontend checks the current item list against the draft's starting snapshot. A write between that check and PATCH can still overwrite a concurrent edit. Closing that window requires a backend version precondition.
 
 ### API (#26)
 
 | Route | Frontend function | What it does |
-|---|---|---|
-| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Fields left out stay, `null` clears them; `items` replaces all items. Returns the corrected `ReceiptDetail` |
+| --- | --- | --- |
+| `PATCH /households/{household_id}/receipts/{receipt_id}` | `updateReceipt` | Corrects `store`, `purchase_date`, `total_rappen` and `items` of a `done` receipt. Omitted fields stay unchanged. `null` clears header fields, and an item list replaces all items. Returns the corrected `ReceiptDetail` |
 | `GET /categories` | `listCategories` | All category names, sorted, «Sonstiges» last; the same for every household |
 
 - 404 for non-members and receipts of another household, 409 for receipts that aren't `done` (still processing, failed or duplicate), 422 for an invalid body or a category that isn't in `listCategories`.
@@ -71,27 +49,33 @@
 - Category: `categorize()` from `bonbon/receipts/categories.py` (#42), called before the transaction because it loads its rules from the database once per container.
 
 **Implemented** (@Dam-Mil):
+
 - Textract Lambda: `AnalyzeExpense`, raw JSON to S3, result on the queue (#41)
-- Categorization: fixed category list + keyword rules seeded in migration 0006, and
-  `categorize()` in `bonbon/receipts/categories.py`; the match ending furthest right wins
+- Categorization uses the fixed category list and keyword rules seeded in migration 0006.
+  In `categorize()` (`bonbon/receipts/categories.py`), the match ending furthest right wins
   (head noun of a German compound), ties broken by the longer keyword, no match → `Sonstiges` (#42)
 
-**Implemented** (#24): `mise run quality` measures item recognition against a ground truth
-(`tests/data/<name>.expected.json`) and reports the share correct per store (target ≥ 90 %)
-plus the typical errors, for the report. On the Migros test receipt: **41/43 items = 95 %**;
-store and total correct, date not printed on this receipt (so date accuracy is still unmeasured
-until a receipt with a legible date is in the set). Migration `0007` adds the keyword rules this
-needed (brands and product lines Textract returns verbatim: Ragusa, Twist, Bon Chef, Nivea,
-Cantadou …).
+**Recognition quality** (#24): `mise run quality` compares stored Textract responses with
+ground truth in `packages/api/tests/data/<name>.expected.json` and reports the share of items
+correct per store (target ≥ 90 %) and typical errors. The stored Migros fixture scored
+**41/43 items (95 %)**, with the store and total correct. The fixture has no printed date,
+so it provides no measure of date recognition. Migration `0007` adds keyword rules for
+brands and product lines such as Ragusa, Twist, Bon Chef, Nivea and Cantadou.
+
 - Typical remaining errors (two on the Migros receipt): OCR abbreviations Textract can't expand
   (`F Kug.` for Frey Kugeln → `Sonstiges`), and a descriptive suffix that hijacks the
   rightmost-match rule (`M Apfelmus ohne Zucker` matches `zucker` → Grundnahrungsmittel instead
   of Tiefkühl & Konserven).
 
 **Planned**:
-- Run the full ~20-receipt set (#34) for a per-store figure across Migros, Coop, Aldi and Lidl;
-  the 95 % above is one Migros receipt only and the rules are tuned to it.
 
+- Run the full ~20-receipt set (#34) for a per-store figure across Migros, Coop, Aldi and Lidl;
+  the 95 % above is from the single Migros fixture used to tune the rules.
+
+## Verification
+
+- On 2026-11-20, a separate manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
+- An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
 
 ## Rules
 

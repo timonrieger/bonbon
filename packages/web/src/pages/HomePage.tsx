@@ -1,9 +1,10 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { HttpError } from '@oazapfts/runtime';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { createHousehold, joinHousehold, listHouseholds } from '@/api';
+import { useSessionMutation } from '@/components/AuthenticatedSession';
 import { householdRoleLabel } from '@/householdRoleLabel';
 
 function joinErrorMessage(error: Error) {
@@ -34,10 +35,10 @@ export function HomePage() {
   const householdsQueryKey = ['households', user?.userId] as const;
   const households = useQuery({
     queryKey: householdsQueryKey,
-    queryFn: () => listHouseholds(),
+    queryFn: ({ signal }) => listHouseholds({ signal }),
     enabled: user?.userId !== undefined
   });
-  const create = useMutation({
+  const create = useSessionMutation({
     mutationFn: (householdName: string) =>
       createHousehold({ createHouseholdRequest: { name: householdName } }),
     onSuccess: (household) => {
@@ -46,7 +47,7 @@ export function HomePage() {
       return invalidation;
     }
   });
-  const join = useMutation({
+  const join = useSessionMutation({
     mutationFn: (inviteCode: string) => joinHousehold({ joinRequest: { code: inviteCode } }),
     retry: false,
     onSuccess: (household) => {

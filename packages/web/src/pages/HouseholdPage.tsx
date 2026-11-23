@@ -1,13 +1,10 @@
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { HttpError } from '@oazapfts/runtime';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
-  type ContentType,
   createInvite,
-  createReceipt,
-  getHousehold,
   type Household,
   type HouseholdList,
   type InviteCode,
@@ -20,27 +17,47 @@ import {
   removeMember,
   transferOwnership
 } from '@/api';
-import { uploadToS3 } from '@/api/receipts';
-import { ReceiptFilePicker } from '@/components/ReceiptFilePicker';
+import { requestPrivateResource } from '@/api/privateQuery';
+import { useSessionMutation, useSessionSignal } from '@/components/AuthenticatedSession';
+import { HouseholdReceiptList, useHouseholdReceiptList } from '@/components/HouseholdReceiptList';
+import { ReceiptUploadSection } from '@/components/ReceiptUploadSection';
+import {
+  denyHouseholdAccess,
+  handleHouseholdAccessError,
+  householdAccessKey,
+  readHouseholdResource
+} from '@/features/households/householdAccess';
+import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
+import { useReceiptUpload } from '@/features/receipts/useReceiptUpload';
 import { householdRoleLabel } from '@/householdRoleLabel';
 
 export function HouseholdPage() {
   // biome-ignore lint/style/noNonNullAssertion: the route always has :householdId
   const householdId = useParams().householdId!;
+  return <HouseholdContent key={householdId} householdId={householdId} />;
+}
+
+function HouseholdContent({ householdId }: { householdId: string }) {
   const { user } = useAuthenticator((context) => [context.user]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const household = useQuery({
-    queryKey: ['household', householdId],
-    queryFn: () => getHousehold({ householdId })
-  });
+  const getSessionSignal = useSessionSignal();
+
+  const household = useHouseholdAccess(householdId);
+  const leaveKey = ['leaveHousehold', householdId] as const;
+  const activeLeave = useIsMutating({ mutationKey: leaveKey, exact: true }) > 0;
   const members = useQuery({
     queryKey: ['householdMembers', householdId],
-    queryFn: () => listMembers({ householdId }),
-    enabled: household.isSuccess
+    queryFn: ({ signal }) =>
+      readHouseholdResource(
+        queryClient,
+        householdId,
+        (options) => listMembers({ householdId }, options),
+        signal
+      ),
+    enabled: Boolean(household.data)
   });
 
-  const [file, setFile] = useState<File | null>(null);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const leaveButtonRef = useRef<HTMLButtonElement>(null);
   const leaveSubmissionRef = useRef(false);
@@ -52,38 +69,30 @@ export function HouseholdPage() {
   const removeMemberSubmissionRef = useRef(false);
   const membersHeadingRef = useRef<HTMLHeadingElement>(null);
 
-  const upload = useMutation({
-    mutationFn: async (photo: File) => {
-      // Step 1: authenticated POST — get presigned URL + headers from the backend.
-      const receiptUpload = await createReceipt({
-        householdId,
-        // ReceiptFilePicker only lets accepted content types through.
-        createReceiptRequest: { content_type: photo.type as ContentType, size_bytes: photo.size }
-      });
+  function isLeavePending() {
+    return (
+      leaveSubmissionRef.current ||
+      queryClient.isMutating({ mutationKey: leaveKey, exact: true }) > 0
+    );
+  }
 
-      // Step 2: unauthenticated PUT — send raw bytes to S3 with all backend-supplied headers.
-      await uploadToS3(receiptUpload, photo);
-    },
-    onSuccess: () => setFile(null)
-  });
+  const receiptUpload = useReceiptUpload(householdId, isLeavePending);
+  const { activeUpload } = receiptUpload;
+  const receiptList = useHouseholdReceiptList(
+    householdId,
+    Boolean(household.data),
+    receiptUpload.upload.data?.completedAt
+  );
 
-  const leave = useMutation({
-    mutationFn: () => leaveHousehold({ householdId }),
+  const leave = useSessionMutation({
+    mutationKey: leaveKey,
+    mutationFn: () => requestPrivateResource((options) => leaveHousehold({ householdId }, options)),
     retry: false,
+    onError: handleAccessError,
     onSuccess: () => {
+      receiptUpload.abortPreparation();
       const householdsQueryKey = ['households', user?.userId] as const;
-      queryClient.setQueryData<HouseholdList>(householdsQueryKey, (current) =>
-        current
-          ? {
-              ...current,
-              households: current.households.filter((item) => item.id !== householdId)
-            }
-          : current
-      );
-      queryClient.removeQueries({ queryKey: ['household', householdId] });
-      queryClient.removeQueries({ queryKey: ['householdMembers', householdId] });
-      queryClient.removeQueries({ queryKey: ['monthlyReport', householdId] });
-      queryClient.removeQueries({ queryKey: ['spendingTrend', householdId] });
+      denyHouseholdAccess(queryClient, householdId);
       navigate('/', { replace: true });
       void queryClient.invalidateQueries({
         queryKey: householdsQueryKey
@@ -93,21 +102,42 @@ export function HouseholdPage() {
       leaveSubmissionRef.current = false;
     }
   });
-  const transfer = useMutation({
+  function handleAccessError(error: Error) {
+    handleHouseholdAccessError(queryClient, householdId, error, getSessionSignal());
+  }
+
+  function refreshAccessAfterMemberMutationError(error: Error) {
+    // A role change or a missing target member can also return 403 or 404.
+    if (error instanceof HttpError && (error.status === 403 || error.status === 404)) {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: householdAccessKey(householdId) }),
+        queryClient.invalidateQueries({ queryKey: ['householdMembers', householdId] })
+      ]);
+    } else {
+      handleAccessError(error);
+    }
+  }
+
+  const transfer = useSessionMutation({
     mutationFn: (userId: string) =>
-      transferOwnership({ householdId, transferOwnerRequest: { user_id: userId } }),
+      requestPrivateResource((options) =>
+        transferOwnership({ householdId, transferOwnerRequest: { user_id: userId } }, options)
+      ),
     retry: false,
+    onError: refreshAccessAfterMemberMutationError,
     onSuccess: async (updatedMembers) => {
+      const signal = getSessionSignal();
+      if (!queryClient.getQueryData(householdAccessKey(householdId))) return;
       const membersQueryKey = ['householdMembers', householdId] as const;
-      const householdQueryKey = ['household', householdId] as const;
+      const householdQueryKey = householdAccessKey(householdId);
       const householdsQueryKey = ['households', user?.userId] as const;
 
       await Promise.all([
         queryClient.cancelQueries({ queryKey: membersQueryKey }),
-        queryClient.cancelQueries({ queryKey: householdQueryKey }),
         queryClient.cancelQueries({ queryKey: householdsQueryKey })
       ]);
 
+      if (signal.aborted || !queryClient.getQueryData(householdQueryKey)) return;
       queryClient.setQueryData<MemberList>(membersQueryKey, updatedMembers);
 
       const ownMembership = updatedMembers.members.find(
@@ -128,26 +158,30 @@ export function HouseholdPage() {
               }
             : current
         );
-      } else {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: householdQueryKey }),
-          queryClient.invalidateQueries({ queryKey: householdsQueryKey })
-        ]);
       }
 
       setSelectedMember(null);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: householdQueryKey }),
+        queryClient.invalidateQueries({ queryKey: householdsQueryKey })
+      ]);
       window.requestAnimationFrame(() => membersHeadingRef.current?.focus());
     },
     onSettled: () => {
       transferSubmissionRef.current = false;
     }
   });
-  const remove = useMutation({
-    mutationFn: (userId: string) => removeMember({ householdId, userId }),
+  const remove = useSessionMutation({
+    mutationFn: (userId: string) =>
+      requestPrivateResource((options) => removeMember({ householdId, userId }, options)),
     retry: false,
+    onError: refreshAccessAfterMemberMutationError,
     onSuccess: async (_, userId) => {
+      const signal = getSessionSignal();
+      if (!queryClient.getQueryData(householdAccessKey(householdId))) return;
       const membersQueryKey = ['householdMembers', householdId] as const;
       await queryClient.cancelQueries({ queryKey: membersQueryKey });
+      if (signal.aborted || !queryClient.getQueryData(householdAccessKey(householdId))) return;
       queryClient.setQueryData<MemberList>(membersQueryKey, (current) =>
         current
           ? {
@@ -171,7 +205,7 @@ export function HouseholdPage() {
   }, [memberToRemove, remove.isSuccess]);
 
   function confirmLeave() {
-    if (leaveSubmissionRef.current || leave.isPending) return;
+    if (isLeavePending() || receiptUpload.isUploadPending()) return;
 
     leaveSubmissionRef.current = true;
     leave.mutate();
@@ -191,31 +225,36 @@ export function HouseholdPage() {
     remove.mutate(memberToRemove.user_id);
   }
 
-  function handleFileChange(next: File | null) {
-    upload.reset();
-    setFile(next);
-  }
-
   if (household.isPending) return <p>Laden…</p>;
-  if (household.isError) {
-    if (household.error instanceof HttpError && household.error.status === 404) {
-      return (
-        <div className="text-red-600">
-          <p>Dieser Haushalt ist nicht verfügbar.</p>
-          <Link to="/" className="underline">
-            Zu meinen Haushalten
-          </Link>
-        </div>
-      );
-    }
-
-    return <p className="text-red-600">{household.error.message}</p>;
+  if (household.data === null) {
+    return (
+      <div className="text-red-600">
+        <p role="alert">Dieser Haushalt ist nicht verfügbar.</p>
+        <Link to="/" className="underline">
+          Zu meinen Haushalten
+        </Link>
+      </div>
+    );
   }
+  if (!household.data) {
+    return (
+      <p role="alert" className="text-red-600">
+        Der Haushalt konnte nicht geladen werden.
+      </p>
+    );
+  }
+
+  const isOwner = household.data.my_role === MyRole.Owner;
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">{household.data.name}</h1>
+        {household.isError && (
+          <p role="status" className="text-sm text-red-600">
+            Der Haushalt konnte nicht aktualisiert werden.
+          </p>
+        )}
         <p className="text-sm text-gray-600">
           Deine Rolle: {householdRoleLabel(household.data.my_role)}
         </p>
@@ -228,14 +267,20 @@ export function HouseholdPage() {
         <button
           ref={leaveButtonRef}
           type="button"
+          disabled={activeUpload || activeLeave}
           onClick={() => {
             leave.reset();
             setShowLeaveDialog(true);
           }}
-          className="mt-3 block rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+          className="mt-3 block rounded border border-red-300 px-3 py-2 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
         >
           Haushalt verlassen
         </button>
+        {activeUpload && (
+          <p className="mt-1 text-sm text-gray-600">
+            Warte mit dem Verlassen, bis der Upload beendet ist.
+          </p>
+        )}
       </div>
 
       <section aria-labelledby="members-heading">
@@ -249,49 +294,47 @@ export function HouseholdPage() {
         </h2>
 
         {members.isPending && <p className="text-sm text-gray-600">Mitglieder werden geladen…</p>}
-        {members.isError && (
+        {(members.isError || members.data === null) && (
           <p role="alert" className="text-sm text-red-600">
-            {members.error.message}
+            {members.error?.message ?? 'Die Mitglieder sind nicht verfügbar.'}
           </p>
         )}
-        {members.isSuccess && members.data.members.length === 0 && (
+        {members.data?.members.length === 0 && (
           <p className="text-sm text-gray-600">Keine Mitglieder gefunden.</p>
         )}
-        {members.isSuccess && members.data.members.length > 0 && (
+        {members.data && members.data.members.length > 0 && (
           <ul className="divide-y divide-gray-200 rounded border border-gray-200">
             {members.data.members.map((member) => (
               <li key={member.user_id} className="flex justify-between gap-4 px-3 py-2 text-sm">
                 <span>{member.display_name}</span>
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <span className="text-gray-600">{householdRoleLabel(member.role)}</span>
-                  {household.data.my_role === MyRole.Owner &&
-                    user?.userId !== undefined &&
-                    member.user_id !== user.userId && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            transfer.reset();
-                            transferButtonRef.current = event.currentTarget;
-                            setSelectedMember(member);
-                          }}
-                          className="text-sm underline"
-                        >
-                          Haushaltsleitung übergeben
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            remove.reset();
-                            removeMemberButtonRef.current = event.currentTarget;
-                            setMemberToRemove(member);
-                          }}
-                          className="text-sm text-red-700 underline"
-                        >
-                          Mitglied entfernen
-                        </button>
-                      </>
-                    )}
+                  {isOwner && user?.userId !== undefined && member.user_id !== user.userId && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          transfer.reset();
+                          transferButtonRef.current = event.currentTarget;
+                          setSelectedMember(member);
+                        }}
+                        className="text-sm underline"
+                      >
+                        Haushaltsleitung übergeben
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          remove.reset();
+                          removeMemberButtonRef.current = event.currentTarget;
+                          setMemberToRemove(member);
+                        }}
+                        className="text-sm text-red-700 underline"
+                      >
+                        Mitglied entfernen
+                      </button>
+                    </>
+                  )}
                 </div>
               </li>
             ))}
@@ -301,37 +344,12 @@ export function HouseholdPage() {
         <InviteCodeSection key={householdId} householdId={householdId} />
       </section>
 
-      <section aria-labelledby="upload-heading">
-        <h2 id="upload-heading" className="mb-3 text-lg font-medium">
-          Kassenzettel hochladen
-        </h2>
-
-        <ReceiptFilePicker file={file} onChange={handleFileChange} disabled={upload.isPending} />
-
-        {file && (
-          <button
-            type="button"
-            onClick={() => upload.mutate(file)}
-            disabled={upload.isPending}
-            className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto disabled:opacity-50"
-          >
-            {upload.isPending ? 'Wird hochgeladen…' : 'Hochladen'}
-          </button>
-        )}
-
-        {upload.isSuccess && (
-          <p role="status" className="mt-2 text-sm text-green-700">
-            Kassenzettel erfolgreich hochgeladen. Er wird jetzt verarbeitet.
-          </p>
-        )}
-
-        {upload.isError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {upload.error.message}
-          </p>
-        )}
-      </section>
-
+      <ReceiptUploadSection
+        householdId={householdId}
+        disabled={activeUpload || activeLeave || showLeaveDialog}
+        workflow={receiptUpload}
+      />
+      <HouseholdReceiptList householdId={householdId} list={receiptList} />
       {showLeaveDialog && (
         <ConfirmDialog
           title="Haushalt verlassen?"
@@ -346,6 +364,7 @@ export function HouseholdPage() {
           }
           error={leave.isError ? leaveErrorMessage(leave.error) : null}
           isPending={leave.isPending}
+          confirmDisabled={activeUpload}
           onClose={() => setShowLeaveDialog(false)}
           onConfirm={confirmLeave}
           triggerRef={leaveButtonRef}
@@ -447,6 +466,7 @@ function ConfirmDialog({
   description,
   error,
   isPending,
+  confirmDisabled,
   onClose,
   onConfirm,
   triggerRef,
@@ -458,6 +478,7 @@ function ConfirmDialog({
   description: React.ReactNode;
   error: string | null;
   isPending: boolean;
+  confirmDisabled?: boolean;
   onClose: () => void;
   onConfirm: () => void;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
@@ -515,7 +536,12 @@ function ConfirmDialog({
       )}
 
       <div className="mt-6 flex flex-col gap-2 sm:flex-row-reverse sm:gap-3">
-        <button type="button" disabled={isPending} onClick={onConfirm} className={confirmClassName}>
+        <button
+          type="button"
+          disabled={isPending || confirmDisabled}
+          onClick={onConfirm}
+          className={confirmClassName}
+        >
           {isPending ? pendingLabel : confirmLabel}
         </button>
         <button
@@ -533,13 +559,17 @@ function ConfirmDialog({
 }
 
 function InviteCodeSection({ householdId }: { householdId: string }) {
+  const getSessionSignal = useSessionSignal();
+  const queryClient = useQueryClient();
   const [copyStatus, setCopyStatus] = useState<{
     invite: InviteCode;
     status: 'copied' | 'error';
   } | null>(null);
-  const inviteMutation = useMutation({
-    mutationFn: () => createInvite({ householdId }),
-    onMutate: () => setCopyStatus(null)
+  const inviteMutation = useSessionMutation({
+    mutationFn: () => requestPrivateResource((options) => createInvite({ householdId }, options)),
+    onMutate: () => setCopyStatus(null),
+    onError: (error) =>
+      handleHouseholdAccessError(queryClient, householdId, error, getSessionSignal())
   });
   const invite = inviteMutation.data;
   const displayedCopyStatus =
