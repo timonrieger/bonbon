@@ -5,7 +5,7 @@
 ## Done when
 
 - [x] Spending per month, per category and per store (API #18, charts #10)
-- [ ] Comparison with the previous month (optional, first to drop; the API returns `previous_month_total_rappen`, the UI doesn't show it yet)
+- [x] Comparison with the previous month (#63)
 - [x] Household receipt list with a detail view (including the original image via presigned URL)
 - [x] Filter the household receipt list by month (#30)
 - [x] Show possible duplicate and missing purchase date hints in the list and detail view (#30)
@@ -19,11 +19,12 @@
 - **UI** (`DashboardPage.tsx`, #8, #10): month navigation, six-month trend chart, charts per category and per store for the selected month.
 - The dashboard shares the household access query with the household and receipt pages. It verifies access on entry before showing cached reports. A confirmed access denial hides the dashboard and evicts cached private data for that household.
 - **Receipt UI:** `HouseholdPage.tsx` composes `HouseholdReceiptList`, which renders the receipts in API order and links to `ReceiptPage.tsx`. Its companion hook owns the month filter and list polling. The list opens with all months and can be filtered by month using the API's purchase-date and upload-date rules. Uploads and corrections invalidate all cached list variants for that household. The detail view shows the original image and receipt items. Both views flag possible duplicates separately from the processing status and explicitly label missing purchase dates. The list labels the upload timestamp separately.
-- **Open in the dashboard UI:** total and receipt count for the month, previous-month comparison and the receipt list placeholder.
+- **Previous-month comparison** (#63): The dashboard starts on the current month. It shows spending for the selected month and the preceding calendar month, plus the signed difference in CHF and as a percentage of the previous total. The CHF difference remains visible when the previous total is zero, including months without receipts. The API gives the same zero total for both cases, so the UI explains why the percentage is unavailable.
+- **Open in the dashboard UI:** receipt count for the month and the receipt list placeholder.
 
 ## Verification
 
-- To run the local [dashboard access browser fixture](../../packages/web/tests/dashboard-access.html), start `mise run //packages/web:dev` and open `/tests/dashboard-access.html`. It uses mocked responses.
+- To run the local [dashboard access browser fixture](../../packages/web/tests/dashboard-access.html), start `mise run //packages/web:dev` and open `/tests/dashboard-access.html`. It uses mocked responses and covers previous-month totals, positive and negative changes, and the zero baseline.
 - Month selection, duplicate and missing-date hints, and list refresh after uploads and corrections (#30) were checked locally in Chromium with mocked responses.
 - On 2026-11-20, a manual test on the live `bonbon-dev` stack verified that the dashboard reflected the [receipt category correction](02-extraction-categorization.md#verification).
 
