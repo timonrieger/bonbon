@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { getMonthlyReport, getSpendingTrend } from '@/api';
+import { getMonthlyReport, getSpendingTrend, type MonthlyReport } from '@/api';
 import { readHouseholdResource } from '@/features/households/householdAccess';
 import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
 
@@ -30,11 +30,59 @@ function formatMonth(month: string, style: 'short' | 'long' = 'short') {
 
 function formatRappenAsChf(value: TooltipValueType | undefined) {
   if (typeof value !== 'number' && typeof value !== 'string') return '';
+  return formatChf(Number(value));
+}
 
+function formatChf(value: number, signDisplay: Intl.NumberFormatOptions['signDisplay'] = 'auto') {
   return new Intl.NumberFormat('de-CH', {
     style: 'currency',
-    currency: 'CHF'
-  }).format(Number(value) / 100);
+    currency: 'CHF',
+    signDisplay
+  }).format(value / 100);
+}
+
+const percentFormat = new Intl.NumberFormat('de-CH', {
+  style: 'percent',
+  signDisplay: 'exceptZero',
+  maximumFractionDigits: 1
+});
+
+function MonthComparison({
+  report,
+  displayedMonth,
+  previousMonth
+}: {
+  report: MonthlyReport;
+  displayedMonth: string;
+  previousMonth: string;
+}) {
+  const previousTotal = report.previous_month_total_rappen;
+  const difference = report.total_rappen - previousTotal;
+
+  return (
+    <dl className="mt-2 grid gap-3 text-sm md:grid-cols-2">
+      <div>
+        <dt className="text-gray-600">{displayedMonth}</dt>
+        <dd className="font-medium">{formatRappenAsChf(report.total_rappen)}</dd>
+      </div>
+      <div>
+        <dt className="text-gray-600">{previousMonth}</dt>
+        <dd className="font-medium">{formatRappenAsChf(previousTotal)}</dd>
+      </div>
+      <div className="md:col-span-2">
+        <dt className="text-gray-600">Differenz zum Vormonat</dt>
+        <dd className="flex flex-wrap items-baseline gap-x-2 font-medium">
+          <span>{formatChf(difference, 'exceptZero')}</span>
+          {previousTotal !== 0 && <span>({percentFormat.format(difference / previousTotal)})</span>}
+        </dd>
+        {previousTotal === 0 && (
+          <dd className="text-gray-600">
+            Keine Prozentangabe bei Gesamtausgaben von CHF 0.00 im Vormonat.
+          </dd>
+        )}
+      </div>
+    </dl>
+  );
 }
 
 function reportErrorMessage(error: Error) {
@@ -65,6 +113,7 @@ function DashboardContent({ householdId }: { householdId: string }) {
     month: 'long',
     year: 'numeric'
   }).format(selectedMonthDate);
+  const previousMonth = formatMonth(toMonthValue(new Date(year, month - 2, 1)), 'long');
 
   const household = useHouseholdAccess(householdId);
   const accessVerified = household.isFetchedAfterMount && household.isSuccess && !!household.data;
@@ -149,15 +198,30 @@ function DashboardContent({ householdId }: { householdId: string }) {
           </button>
         </nav>
         <p className="mt-2 text-sm text-gray-600">
-          Die Auswahl steuert Kategorie- und Supermarktansicht. Der Monatsverlauf zeigt unabhängig
-          davon sechs Monate.
+          Die Auswahl steuert den Vormonatsvergleich sowie die Kategorie- und Supermarktansicht. Der
+          Monatsverlauf zeigt unabhängig davon sechs Monate.
         </p>
       </div>
 
       <section aria-label="Kennzahlen" className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <article className="rounded border border-gray-200 p-4">
-          <h2 className="font-semibold">Gesamtausgaben</h2>
-          <p className="mt-2 text-sm text-gray-600">Auswertungen sind noch nicht verfügbar.</p>
+        <article
+          aria-labelledby="monthly-comparison"
+          className="rounded border border-gray-200 p-4"
+        >
+          <h2 id="monthly-comparison" className="font-semibold">
+            Gesamtausgaben
+          </h2>
+          {monthlyReport.isPending ? (
+            <p className="mt-2 text-sm text-gray-600">Gesamtausgaben werden geladen…</p>
+          ) : monthlyReport.isError ? (
+            <p className="mt-2 text-sm text-red-600">{reportErrorMessage(monthlyReport.error)}</p>
+          ) : monthlyReport.data ? (
+            <MonthComparison
+              report={monthlyReport.data}
+              displayedMonth={displayedMonth}
+              previousMonth={previousMonth}
+            />
+          ) : null}
         </article>
         <article className="rounded border border-gray-200 p-4">
           <h2 className="font-semibold">Kassenzettel</h2>

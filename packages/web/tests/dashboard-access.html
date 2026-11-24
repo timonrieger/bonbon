@@ -34,6 +34,35 @@
     let reportCalls = 0;
     let householdCalls = 0;
     const requestedMonths = [];
+    const requestedReportMonths = [];
+    const now = new Date();
+    const monthReports = [
+      { total_rappen: 12500, previous_month_total_rappen: 10000 },
+      { total_rappen: 10000, previous_month_total_rappen: 20000 },
+      { total_rappen: 20000, previous_month_total_rappen: 0 }
+    ];
+    const monthValue = date =>
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthLabel = month => {
+      const [year, value] = month.split('-').map(Number);
+      return new Intl.DateTimeFormat('de-CH', { month:'long', year:'numeric' })
+        .format(new Date(year, value - 1, 1));
+    };
+    const januaryMonth = monthValue(new Date(now.getFullYear() - 1, 0, 1));
+    const decemberMonth = monthValue(new Date(now.getFullYear() - 1, -1, 1));
+    const novemberMonth = monthValue(new Date(now.getFullYear() - 1, -2, 1));
+    const specialMonthReports = new Map([
+      [januaryMonth, { total_rappen:12345, previous_month_total_rappen:10000 }],
+      [decemberMonth, { total_rappen:0, previous_month_total_rappen:0 }]
+    ]);
+    const dashboardMonths = Array.from({ length: monthReports.length + 1 }, (_, offset) => {
+      const month = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      return monthValue(month);
+    });
+    const comparison = () => root.querySelector('[aria-labelledby="monthly-comparison"]')?.textContent;
+    const selectedMonthLabel = () => root.querySelector('[aria-live="polite"]')?.textContent;
+    const chf = (amount, signDisplay = 'auto') =>
+      new Intl.NumberFormat('de-CH', { style:'currency', currency:'CHF', signDisplay }).format(amount);
 
     defaults.baseUrl = 'https://api.invalid';
     defaults.fetch = async (input, init) => {
@@ -46,7 +75,23 @@
       }
       if (path.endsWith('/reports/monthly')) {
         reportCalls++;
-        return Response.json({by_category:[], by_store:[]}, {status:monthlyStatus});
+        const month = url.searchParams.get('month');
+        requestedReportMonths.push(month);
+        const totals =
+          specialMonthReports.get(month) ??
+          monthReports[dashboardMonths.indexOf(month)] ?? {
+            total_rappen:0,
+            previous_month_total_rappen:0
+          };
+        return Response.json(monthlyStatus === 200
+          ? {
+              month,
+              receipt_count:totals.total_rappen === 0 ? 0 : 1,
+              by_category:[],
+              by_store:[],
+              ...totals
+            }
+          : {}, {status:monthlyStatus});
       }
       if (path.endsWith('/reports/trend')) {
         reportCalls++;
@@ -97,7 +142,7 @@
       client.setQueryData(['households','alice'], {households:[household,{id:'other'}]});
       client.setQueryData(['receipts','h','2026-11'], {receipts:[]});
       client.setQueryData(['receipt','h','r'], {id:'r'});
-      client.setQueryData(['monthlyReport','h','2026-11'], {by_category:[],by_store:[]});
+      client.setQueryData(['monthlyReport','h','2026-11'], {month:'2026-11', by_category:[], by_store:[], receipt_count:0, total_rappen:0, previous_month_total_rappen:0});
       client.setQueryData(['spendingTrend','h',6], {months:[]});
       client.setQueryData(['spendingTrend','other',6], {months:[]});
     }
@@ -171,6 +216,64 @@
       holdHousehold = false;
       releaseHousehold();
       await until(() => root.textContent.includes(household.name) && reportCalls === 2, 'Verified dashboard did not load');
+      const previousButton = root.querySelector('[aria-label="Vorheriger Monat"]');
+      for (const [index, [current, previous, difference, percent]] of [
+        [125, 100, 25, '+25%'],
+        [100, 200, -100, '-50%'],
+        [200, 0, 200, 'Keine Prozentangabe']
+      ].entries()) {
+        if (index > 0) previousButton.click();
+        await until(() => comparison()?.includes(percent), 'Wrong comparison for ' + dashboardMonths[index]);
+        const monthLabels = [...root.querySelectorAll('[aria-labelledby="monthly-comparison"] dt')];
+        for (const [position, amount] of [current, previous].entries()) {
+          const label = new Intl.DateTimeFormat('de-CH', { month:'long', year:'numeric', timeZone:'UTC' })
+            .format(new Date(dashboardMonths[index + position]));
+          assert(monthLabels[position].textContent === label, 'Wrong month label: ' + label);
+          assert(monthLabels[position].nextElementSibling.textContent === chf(amount), 'Wrong monthly total');
+        }
+        assert(comparison().includes(chf(difference, 'exceptZero')), 'Wrong CHF difference');
+        if (previous === 0) assert(!comparison().includes('%'), 'Zero baseline displayed a percentage');
+      }
+      const januaryOffset = 12 + now.getMonth();
+      for (let offset = 3; offset <= januaryOffset; offset++) {
+        previousButton.click();
+        const expectedMonth = monthValue(new Date(now.getFullYear(), now.getMonth() - offset, 1));
+        await until(
+          () => selectedMonthLabel() === monthLabel(expectedMonth),
+          'Could not select ' + expectedMonth
+        );
+      }
+      await until(() => comparison()?.includes('+23.5%'), 'Rappen percentage was not rounded to one decimal');
+      assert(requestedReportMonths.at(-1) === januaryMonth, 'January report requested the wrong month');
+      let comparisonLabels = [...root.querySelectorAll('[aria-labelledby="monthly-comparison"] dt')];
+      assert(comparisonLabels[0].textContent === monthLabel(januaryMonth), 'Selected month was not January');
+      assert(comparisonLabels[1].textContent === monthLabel(decemberMonth), 'Previous month was not December of the prior year');
+      assert(comparisonLabels[0].nextElementSibling.textContent === chf(123.45), 'CHF 123.45 was not displayed');
+      assert(comparisonLabels[1].nextElementSibling.textContent === chf(100), 'CHF 100.00 was not displayed');
+      assert(comparison().includes(chf(23.45, 'exceptZero')), 'CHF 23.45 difference was not displayed');
+      assert(!/NaN|Infinity/.test(comparison()), 'Comparison displayed NaN or Infinity');
+
+      previousButton.click();
+      await until(
+        () => selectedMonthLabel() === monthLabel(decemberMonth),
+        'Could not select December of the prior year'
+      );
+      await until(
+        () =>
+          requestedReportMonths.at(-1) === decemberMonth &&
+          comparison()?.includes('Keine Prozentangabe'),
+        'Empty dashboard comparison did not load'
+      );
+      comparisonLabels = [...root.querySelectorAll('[aria-labelledby="monthly-comparison"] dt')];
+      assert(comparisonLabels[0].textContent === monthLabel(decemberMonth), 'Empty dashboard selected month was incorrect');
+      assert(
+        comparisonLabels[1].textContent === monthLabel(novemberMonth),
+        'Empty dashboard previous month was incorrect'
+      );
+      assert(comparisonLabels[0].nextElementSibling.textContent === chf(0), 'Empty dashboard did not display CHF 0.00');
+      assert(comparisonLabels[1].nextElementSibling.textContent === chf(0), 'Empty previous month did not display CHF 0.00');
+      assert(!comparison().includes('%'), 'Empty dashboard displayed a percentage');
+      assert(!/NaN|Infinity/.test(comparison()), 'Empty dashboard displayed NaN or Infinity');
       assert(!client.getQueryCache().find({queryKey:['household','h']}), 'Legacy household key still exists');
       const callsBefore = householdCalls;
       await client.invalidateQueries({queryKey:key});
@@ -197,7 +300,7 @@
       await until(() => root.textContent.includes('Dieser Haushalt ist nicht verfügbar.'), 'Household denial was not displayed');
       assertDenied();
       assert(reportCalls === previousReports, 'Denied dashboard requested private reports');
-      report.textContent = 'PASS: month boundaries, invalid months sent no requests, cleared filter, shared key, cache eviction and cancellation';
+      report.textContent = 'PASS: month boundaries, invalid months sent no requests, cleared filter, shared key, cache eviction, cancellation and month comparisons';
     }
     run().catch(error => { report.textContent = String(error.stack ?? error); });
   </script>
