@@ -76,7 +76,9 @@ _DEFAULT_MOCK_DELAY_MS = 3300
 
 
 def _textract_mock_enabled() -> bool:
-    return os.environ.get("TEXTRACT_MOCK", "") == "1"
+    # Never mock on prod, regardless of the env var (the template already forces it off there;
+    # this is a second line of defence, #35).
+    return os.environ.get("STAGE") != "prod" and os.environ.get("TEXTRACT_MOCK", "") == "1"
 
 
 @cache

@@ -582,7 +582,7 @@ Resources:
           # Same value as the queue's maxReceiveCount, so the last-attempt failure message is
           # sent on the delivery that SQS would otherwise drop to the DLQ.
           MAX_RECEIVE_COUNT: !FindInMap [Worker, Receipts, MaxReceiveCount]
-          TEXTRACT_MOCK: !Ref TextractMock
+          TEXTRACT_MOCK: !If [IsProd, "0", !Ref TextractMock]
           TEXTRACT_MOCK_DELAY_MS: !Ref TextractMockDelayMs
       Events:
         ReceiptUploaded:
