@@ -60,6 +60,38 @@ def test_shared_household_keeps_data_and_hands_over(database: FakeDatabase) -> N
     assert len(bucket_keys(s3)) == 2  # shared household's files stay
 
 
+def test_last_other_member_leaves_during_cleanup_deletes_files(
+    database: FakeDatabase, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Race (Noel's review): the other member leaves between prepare_deletion and remove_member.
+    prepare_deletion sees them and returns False (so files aren't deleted up front), but then
+    remove_member finds user-1 alone, deletes the household and returns True — so the files must
+    be cleaned up afterwards instead of being left orphaned."""
+    database.sync_user("user-1", "Ada", None)
+    database.sync_user("user-2", "Bo", None)
+    household_id = database.create_household("H", "user-1").id
+    database.add_member(UUID(household_id), "user-2", "member")
+    s3 = seed_bucket(household_id)
+
+    real_prepare = database.prepare_deletion
+
+    def prepare_then_other_leaves(hid: str, uid: str) -> bool:
+        result = real_prepare(hid, uid)  # False: user-2 is still a member
+        # user-2 leaves right after the check, before remove_member runs.
+        database.memberships = {
+            k: r for k, r in database.memberships.items() if k != (UUID(hid), "user-2")
+        }
+        return result
+
+    monkeypatch.setattr(delete_cleanup.households, "prepare_deletion", prepare_then_other_leaves)
+
+    cleanup("user-1")
+
+    assert "user-1" not in database.users  # account gone
+    assert UUID(household_id) not in database.households  # household deleted by the race
+    assert bucket_keys(s3) == []  # files cleaned up despite prepare_deletion returning False
+
+
 def test_s3_failure_raises(database: FakeDatabase, monkeypatch: pytest.MonkeyPatch) -> None:
     database.sync_user("user-1", "Ada", None)
     database.create_household("H", "user-1")

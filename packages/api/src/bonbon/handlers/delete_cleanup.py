@@ -20,6 +20,14 @@ from bonbon.users import repo as users
 logger = Logger()
 
 
+def _delete_files(household_id: str) -> None:
+    """Delete a household's S3 files, raising if S3 refuses any so the whole job retries."""
+    deleted, failed = storage.delete_household_files(household_id)
+    if failed:
+        raise RuntimeError(f"S3 refused {len(failed)} file(s) of household {household_id}")
+    logger.info("Deleted household files", household_id=household_id, files=deleted)
+
+
 def _cleanup(user_id: str) -> None:
     # 1. Block the user: any request with a still-valid token is rejected from now on.
     users.tombstone(user_id)
@@ -29,22 +37,26 @@ def _cleanup(user_id: str) -> None:
     # household row, so a retry after an S3 error can still find the files. Then remove_member
     # deletes the household (sole member) or hands the owner role on (shared).
     for household_id in [h.id for h in households.list_for_user(user_id)]:
-        if households.prepare_deletion(household_id, user_id):
-            deleted, failed = storage.delete_household_files(household_id)
-            if failed:
-                # Raise so the whole job retries; the files must be gone before the household row.
-                raise RuntimeError(f"S3 refused {len(failed)} file(s) of household {household_id}")
-            logger.info("Deleted household files", household_id=household_id, files=deleted)
+        sole_member = households.prepare_deletion(household_id, user_id)
+        if sole_member:
+            _delete_files(household_id)
         try:
-            households.remove_member(household_id, user_id, hand_over=True)
+            deleted = households.remove_member(household_id, user_id, hand_over=True)
         except NotFoundError:
             # Already removed in an earlier attempt; a retry skips it.
             logger.info("Household already left", household_id=household_id)
+            continue
+        if deleted and not sole_member:
+            # Race: the last other member left between prepare_deletion (which saw them and
+            # returned False) and remove_member, so the household was deleted after all and its
+            # files were not cleaned up above. Delete them now. (If the job dies before this
+            # succeeds, the household is already gone from list_for_user, so a retry can't find
+            # the files again — the same accepted limitation as the sole-member path.)
+            _delete_files(household_id)
 
     # 4. All memberships are gone now, so the users row can go (FK without cascade).
     # Tombstone stays.
     users.delete(user_id)
-    logger.info("Account data deleted", user_id=user_id)
 
 
 @logger.inject_lambda_context
