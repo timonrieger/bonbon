@@ -86,3 +86,23 @@ def test_disable_failure_after_queueing_still_returns_202(
     sqs = boto3.client("sqs", region_name="us-east-1")
     messages = sqs.receive_message(QueueUrl=queue_url).get("Messages", [])
     assert [m["Body"] for m in messages] == [user_id]
+
+
+def test_send_message_failure_propagates_and_does_not_disable(
+    account: tuple[str, str, FakeCognito], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #58 order (queue first): if queueing the job fails, nothing has happened yet. The
+    error propagates (API Gateway turns it into a 5xx and the user retries) and the Cognito
+    account is never disabled."""
+    user_id, _, cognito = account
+
+    def failing_send_message(**kwargs: object) -> None:
+        raise ClientError({"Error": {"Code": "InternalErrorException"}}, "SendMessage")
+
+    monkeypatch.setattr(routes._sqs(), "send_message", failing_send_message)
+
+    with pytest.raises(ClientError):
+        api_request(users_handler, "DELETE", "/users/me", user=user_id)
+
+    # Queueing failed before the disable step, so the account was never disabled.
+    assert cognito.disabled == []

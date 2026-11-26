@@ -20,10 +20,11 @@ from bonbon.auth import user_id_from_token
 router = Router()
 logger = Logger()
 
-# Bound the AWS calls well within the Lambda timeout; SQS/Cognito retries are handled by the
-# queue redrive, not in-invocation. Same idea as the Textract worker's client config.
+# Bound the AWS calls well within the Lambda's 15 s timeout: read_timeout=5 so a hanging SQS or
+# Cognito call returns a clean 5xx instead of a Lambda timeout. There is no in-invocation retry
+# and no queue redrive for this endpoint — on a 5xx the user retries the request themselves.
 _CLIENT_CONFIG = Config(
-    connect_timeout=5, read_timeout=15, retries={"max_attempts": 1, "mode": "standard"}
+    connect_timeout=5, read_timeout=5, retries={"max_attempts": 1, "mode": "standard"}
 )
 
 
