@@ -69,6 +69,8 @@ class FakeDatabase:
         self.joined_at: dict[tuple[UUID, str], datetime] = {}
         # user id -> (display_name, email)
         self.users: dict[str, tuple[str, str | None]] = {}
+        # user ids marked for deletion (feature 05); see migration 0008
+        self.tombstones: set[str] = set()
         self.receipts: dict[UUID, FakeReceipt] = {}
         # Migration 0002 adds 'Sonstiges'; tests add more.
         self.categories: set[str] = {"Sonstiges"}
@@ -209,6 +211,12 @@ class FakeDatabase:
     # bonbon.users.repo
     def sync_user(self, user_id: str, display_name: str, email: str | None) -> None:
         self.users[user_id] = (display_name, email)
+
+    def is_tombstoned(self, user_id: str) -> bool:
+        return user_id in self.tombstones
+
+    def tombstone(self, user_id: str) -> None:
+        self.tombstones.add(user_id)
 
     # Test setup: a member without going through an invite code.
     def add_member(self, household_id: UUID, user_id: str, role: Role = "member") -> None:

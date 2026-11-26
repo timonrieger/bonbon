@@ -1189,6 +1189,38 @@
           }
         }
       }
+    },
+    "/users/me": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "summary": "DELETE /users/me",
+        "operationId": "deleteAccount",
+        "responses": {
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Deletion accepted; account and data are removed shortly",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "null",
+                  "title": "Return"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

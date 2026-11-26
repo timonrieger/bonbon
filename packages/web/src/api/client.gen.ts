@@ -537,6 +537,21 @@ export function listCategories(opts?: Oazapfts.RequestOpts) {
         ...opts
     }));
 }
+/**
+ * DELETE /users/me
+ */
+export function deleteAccount(opts?: Oazapfts.RequestOpts) {
+    return oazapfts.ok(oazapfts.fetchJson<{
+        status: 202;
+        data: null;
+    } | {
+        status: 422;
+        data: HttpValidationError;
+    }>("/users/me", {
+        ...opts,
+        method: "DELETE"
+    }));
+}
 export enum MyRole {
     Owner = "owner",
     Member = "member"

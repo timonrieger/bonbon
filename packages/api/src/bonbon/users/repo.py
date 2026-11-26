@@ -1,6 +1,20 @@
 from bonbon import db
 
 
+def is_tombstoned(user_id: str) -> bool:
+    """Whether this account is being (or has been) deleted (feature 05)."""
+    return bool(db.query("SELECT 1 FROM tombstones WHERE user_id = :user_id", user_id=user_id))
+
+
+def tombstone(user_id: str) -> None:
+    """Mark an account for deletion; idempotent, so a retried deletion job changes nothing."""
+    with db.transaction() as conn:
+        conn.run(
+            "INSERT INTO tombstones (user_id) VALUES (:user_id) ON CONFLICT DO NOTHING",
+            user_id=user_id,
+        )
+
+
 def sync(user_id: str, display_name: str, email: str | None) -> None:
     """Create the user or update name and e-mail; writes nothing if both are unchanged."""
     with db.transaction() as conn:

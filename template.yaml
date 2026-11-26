@@ -478,6 +478,44 @@ Resources:
       QueueName: !Sub bonbon-results-dlq-${Stage}
       MessageRetentionPeriod: 1209600 # 14 days, the maximum
 
+  # Account deletion (feature 05, ADR 0007): DELETE /users/me (outside the VPC) sends the user id
+  # here, the deletion worker consumes it. Written by a LabRole Lambda, so no QueuePolicy needed
+  # (like ResultsQueue).
+  DeletionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-deletion-${Stage}
+      # At least 6 x the deletion worker's timeout (AWS guidance for Lambda event sources).
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeletionDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  DeletionDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-deletion-dlq-${Stage}
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum
+
+  # A deletion job that failed every retry waits in the DLQ for someone to look at it. The alarm
+  # makes that visible in CloudWatch; no action is wired to it (the stack has no SNS topic).
+  DeletionDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub bonbon-deletion-dlq-${Stage}
+      AlarmDescription: A failed account-deletion job is sitting in the deletion DLQ.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeletionDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      TreatMissingData: notBreaching
+
   # A resource policy on the queue, not an IAM policy, so it is allowed in the Learner Lab.
   ReceiptsQueuePolicy:
     Type: AWS::SQS::QueuePolicy
@@ -494,6 +532,28 @@ Resources:
                 aws:SourceArn: !Sub arn:aws:s3:::bonbon-receipts-${Stage}-${AWS::AccountId}
               StringEquals:
                 aws:SourceAccount: !Ref AWS::AccountId
+
+  # Account deletion endpoint (feature 05). Outside the VPC, because it calls Cognito and SQS,
+  # which VPC Lambdas can't reach (ADR 0007). No DB_* vars and no VpcConfig: it never touches the
+  # database, so it doesn't count towards the 79-connection limit. The worker (inside the VPC)
+  # does the data cleanup.
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.users.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 15
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          DELETION_QUEUE_URL: !Ref DeletionQueue
+      Events:
+        DeleteAccount:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /users/me
+            Method: DELETE
 
   ProcessReceiptFunction:
     Type: AWS::Serverless::Function
