@@ -46,6 +46,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(households, "create_invite", fake.create_invite)
     monkeypatch.setattr(households, "join", fake.join)
     monkeypatch.setattr(households, "remove_member", fake.remove_member)
+    monkeypatch.setattr(households, "prepare_deletion", fake.prepare_deletion)
+    monkeypatch.setattr(users, "delete", fake.delete_user)
     monkeypatch.setattr(households, "transfer_owner", fake.transfer_owner)
     monkeypatch.setattr(receipts, "create", fake.create_receipt)
     monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)

@@ -555,6 +555,49 @@ Resources:
             Path: /users/me
             Method: DELETE
 
+  # Account deletion worker (feature 05, ADR 0007). Outside the VPC, triggered by the deletion
+  # queue: it invokes the cleanup function (inside the VPC) for the database and S3 work, then
+  # deletes the Cognito account. Timeouts nest (cleanup 60 < lambda read_timeout 70 < this 120 <
+  # queue visibility 180), so a stuck cleanup surfaces as a FunctionError, not a lost message.
+  DeleteAccountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_account.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 120
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          CLEANUP_FUNCTION_NAME: !Ref DeleteCleanupFunction
+      Events:
+        DeletionJob:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeletionQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # Cleanup function for account deletion (feature 05). Inside the VPC for the database and S3
+  # (gateway endpoint); it can't reach Cognito, so the worker above does that part. Invoked
+  # synchronously by DeleteAccountFunction, so it has no event source of its own. One connection
+  # per container, so its ReservedConcurrentExecutions counts towards the 79-connection limit.
+  DeleteCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_cleanup.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+      ReservedConcurrentExecutions: 5
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+
   ProcessReceiptFunction:
     Type: AWS::Serverless::Function
     Properties:
