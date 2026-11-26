@@ -45,7 +45,7 @@ flowchart LR
 | Receipt list and detail API (`ReceiptsFunction`, presigned `image_url`) | scaffolded | @nosernoel |
 | Reports API: monthly, trend (SQL `GROUP BY` at query time, `ReportsFunction`) | implemented | @nosernoel |
 | SNS notifications | planned | @Dam-Mil |
-| Account deletion queue + worker | planned | @Dam-Mil |
+| Account deletion queue + worker | implemented (#65, #66) | @Dam-Mil |
 | Frontend hosting on Amplify Hosting, `WebUrl` output, `mise run deploy:web` ([0008](decisions/0008-frontend-on-amplify-hosting.md): CloudFront is blocked in the Learner Lab) | implemented (prod stack only) | @timonrieger |
 | CloudWatch alarms + dashboard | planned | @schmid277 |
 

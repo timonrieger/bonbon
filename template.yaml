@@ -220,7 +220,7 @@ Resources:
   # Every route in the Python router needs a matching event here.
   # Functions that use the database run in the VPC and hold one connection per container.
   # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
-  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + Migrate 1 = 51.
+  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + DeleteCleanup 5 + Migrate 1 = 56.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -485,7 +485,9 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub bonbon-deletion-${Stage}
-      # At least 6 x the deletion worker's timeout (AWS guidance for Lambda event sources).
+      # Longer than the orchestrator Lambda's 120 s timeout, so a message stays invisible for the
+      # whole invocation and SQS doesn't redeliver it while the worker is still running
+      # (nesting: cleanup 60 < lambda read 70 < orchestrator 120 < visibility 180).
       VisibilityTimeout: 180
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeletionDeadLetterQueue.Arn
@@ -554,6 +556,49 @@ Resources:
             RestApiId: !Ref Api
             Path: /users/me
             Method: DELETE
+
+  # Account deletion worker (feature 05, ADR 0007). Outside the VPC, triggered by the deletion
+  # queue: it invokes the cleanup function (inside the VPC) for the database and S3 work, then
+  # deletes the Cognito account. Timeouts nest (cleanup 60 < lambda read_timeout 70 < this 120 <
+  # queue visibility 180), so a stuck cleanup surfaces as a FunctionError, not a lost message.
+  DeleteAccountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_account.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 120
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          CLEANUP_FUNCTION_NAME: !Ref DeleteCleanupFunction
+      Events:
+        DeletionJob:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeletionQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # Cleanup function for account deletion (feature 05). Inside the VPC for the database and S3
+  # (gateway endpoint); it can't reach Cognito, so the worker above does that part. Invoked
+  # synchronously by DeleteAccountFunction, so it has no event source of its own. One connection
+  # per container, so its ReservedConcurrentExecutions counts towards the 79-connection limit.
+  DeleteCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_cleanup.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+      ReservedConcurrentExecutions: 5
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
 
   ProcessReceiptFunction:
     Type: AWS::Serverless::Function

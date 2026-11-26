@@ -6,11 +6,12 @@
 
 - [ ] The app shows per household what will happen, and requires re-authentication
 - [x] The API queues a deletion job (own SQS queue), then disables the Cognito account
-- [ ] The worker deletes all households where the user is the only member, including receipts and S3 images
-- [ ] In shared households the user is removed like on leaving: receipts stay, the link to the user is removed, the owner role goes to the longest-standing member
-- [ ] Finally the Cognito account is deleted
-- [ ] All steps can be repeated safely; failures go to a DLQ and trigger a CloudWatch alarm
+- [x] The worker deletes all households where the user is the only member, including receipts and S3 images
+- [x] In shared households the user is removed like on leaving: receipts stay, the link to the user is removed, the owner role goes to the longest-standing member
+- [x] Finally the Cognito account is deleted
+- [x] All steps can be repeated safely; failures go to a DLQ and trigger a CloudWatch alarm
 - [ ] Done within a few minutes
+
 
 ## Implementation status
 
@@ -69,10 +70,11 @@ frontend bypasses the entire cleanup pipeline.
 
 ### Backend / worker — @Dam-Mil
 
-**Implemented** (#65): the `DELETE /users/me` endpoint, the deletion queue + DLQ + alarm, and
-the tombstone table (migration 0003 … 0008). The worker (cleanup + orchestrator Lambdas) is
-tracked in #58. Agreed design: queue + worker as in the proposal, not a synchronous request.
-"Instant" means no grace period; the worker is done within seconds.
+**Implemented**: the `DELETE /users/me` endpoint, the deletion queue + DLQ + alarm, and
+the tombstone table (migration 0008) in #65; the cleanup + orchestrator worker Lambdas
+in #66. Agreed design: queue + worker as in the proposal, not a synchronous request. "Instant"
+means no grace period; the worker is done within seconds.
+
 
 **Lambdas.** VPC Lambdas reach only the database and S3 (gateway endpoint), not Cognito
 or SQS ([0007](../decisions/0007-worker-split-and-db-credentials.md)). So:
@@ -85,8 +87,10 @@ or SQS ([0007](../decisions/0007-worker-split-and-db-credentials.md)). So:
   worker tombstones the id and deletes the Cognito account anyway — so the endpoint still
   returns `202` and only logs it. Both the endpoint and the worker are idempotent: a second
   click just queues a second job, which the worker no-ops. A timeout on either call counts as
-  a retryable failure (SQS: 5xx to the user; Cognito: logged, worker handles it). Reads `sub`
-  straight from the authorizer claims, never from the request, and not through
+  a retryable failure (SQS: 5xx to the user; Cognito: logged, worker handles it). An
+  already-issued ID token stays valid until it expires, so the tombstone (not the disable) is
+  what blocks requests during deletion. Reads `sub` straight from the authorizer claims, never
+  from the request, and not through
   `bonbon.auth.current_user_id`: that syncs the user to the database, which this Lambda can't
   reach.
 

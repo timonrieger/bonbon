@@ -15,6 +15,17 @@ def tombstone(user_id: str) -> None:
         )
 
 
+def delete(user_id: str) -> None:
+    """Remove the users row after all memberships are gone (feature 05, account deletion step 4).
+
+    memberships.user_id references users without ON DELETE CASCADE, so every membership must be
+    removed first (remove_member). receipts.uploaded_by is ON DELETE SET NULL, so receipts stay
+    without an uploader. Idempotent: deleting an absent row is a no-op. The tombstone is kept.
+    """
+    with db.transaction() as conn:
+        conn.run("DELETE FROM users WHERE user_id = :user_id", user_id=user_id)
+
+
 def sync(user_id: str, display_name: str, email: str | None) -> None:
     """Create the user or update name and e-mail; writes nothing if both are unchanged."""
     with db.transaction() as conn:
