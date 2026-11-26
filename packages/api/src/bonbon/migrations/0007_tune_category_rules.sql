@@ -1,4 +1,4 @@
--- More keyword rules, tuned against the real Migros receipt (tests/data/textract_migros.json)
+-- More keyword rules, tuned against the real Migros receipt (packages/api/src/bonbon/receipts/mock_data/textract_migros.json)
 -- for issue #24. Raises item recognition on that receipt from 58 % to 95 %. Mostly brand and
 -- product-line names Textract returns verbatim (Ragusa, Twist, Bon Chef, Nivea, Cantadou) plus
 -- a few Swiss product words. 0006 is already applied, so these go in a new file.

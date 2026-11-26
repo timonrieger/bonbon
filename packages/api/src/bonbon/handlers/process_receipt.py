@@ -17,7 +17,9 @@ Failures (see ADR 0007):
 import hashlib
 import json
 import os
+import time
 from functools import cache
+from pathlib import Path
 from uuid import UUID
 
 import boto3
@@ -63,6 +65,34 @@ def _textract():
     return boto3.client("textract", config=_CLIENT_CONFIG)
 
 
+# Dev-only Textract mock (#35). Set TEXTRACT_MOCK=1 on the dev stack to skip the real
+# AnalyzeExpense call and return a stored real response instead: no Textract cost, a realistic
+# payload for the downstream result worker, and a configurable delay that imitates the real
+# call so the queue/timeout behaviour stays representative. Off (and unset) everywhere else.
+_MOCK_RESULT_PATH = (
+    Path(__file__).resolve().parent.parent / "receipts" / "mock_data" / "textract_migros.json"
+)
+_DEFAULT_MOCK_DELAY_MS = 3300
+
+
+def _textract_mock_enabled() -> bool:
+    return os.environ.get("TEXTRACT_MOCK", "") == "1"
+
+
+@cache
+def _mock_result() -> dict:
+    return json.loads(_MOCK_RESULT_PATH.read_text())
+
+
+def _analyze_expense(image: bytes) -> dict:
+    """Call Textract AnalyzeExpense, or return the stored mock result on the dev stack (#35)."""
+    if _textract_mock_enabled():
+        delay_ms = int(os.environ.get("TEXTRACT_MOCK_DELAY_MS", _DEFAULT_MOCK_DELAY_MS))
+        time.sleep(delay_ms / 1000)
+        return _mock_result()
+    return _textract().analyze_expense(Document={"Bytes": image})
+
+
 @cache
 def _sqs():
     return boto3.client("sqs", config=_CLIENT_CONFIG)
@@ -93,7 +123,7 @@ def process_record(record: SQSRecord) -> None:
         try:
             # One download serves both Textract and the duplicate hash.
             image = storage.read_object(key)
-            result = _textract().analyze_expense(Document={"Bytes": image})
+            result = _analyze_expense(image)
 
             result_key = storage.result_key(household_id_str, receipt_id_str)
             storage.put_json(result_key, json.dumps(result).encode())

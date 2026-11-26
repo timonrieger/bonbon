@@ -72,7 +72,8 @@ def sqs_record(body: str) -> SQSRecord:
 
 
 def run_load_test(delay: float) -> int:
-    result = json.loads((DATA / "textract_migros.json").read_text())
+    fixture = Path(__file__).parents[1] / "src/bonbon/receipts/mock_data/textract_migros.json"
+    result = json.loads(fixture.read_text())
     database = FakeDatabase()
     textract = MockTextract(result, delay)
     lock = threading.Lock()
