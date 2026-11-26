@@ -84,9 +84,16 @@ def main() -> int:
     store_hits = date_hits = total_hits = header_count = 0
 
     for expected_path in expected_files:
-        raw_path = expected_path.with_name(expected_path.name.replace(".expected.json", ".json"))
+        raw_name = expected_path.name.replace(".expected.json", ".json")
+        raw_path = expected_path.with_name(raw_name)
         if not raw_path.exists():
-            sys.exit(f"{expected_path.name} has no matching Textract file {raw_path.name}")
+            # The Textract mock fixture lives under src/ so the Lambda packages it (#35), not
+            # next to its ground truth; fall back to there before giving up.
+            packaged = API / "src" / "bonbon" / "receipts" / "mock_data" / raw_name
+            if packaged.exists():
+                raw_path = packaged
+            else:
+                sys.exit(f"{expected_path.name} has no matching Textract file {raw_name}")
 
         expected = json.loads(expected_path.read_text())
         receipt = parse_expense(json.loads(raw_path.read_text()))

@@ -44,7 +44,8 @@ def row(**fields: str) -> dict:
 
 def test_real_migros_receipt() -> None:
     """Textract's answer to a photographed Migros receipt (bottom with the date cut off)."""
-    receipt = parse_expense(json.loads((DATA / "textract_migros.json").read_text()))
+    fixture = Path(__file__).parents[1] / "src/bonbon/receipts/mock_data/textract_migros.json"
+    receipt = parse_expense(json.loads(fixture.read_text()))
 
     assert receipt.store == "Migros"
     assert receipt.purchase_date is None
