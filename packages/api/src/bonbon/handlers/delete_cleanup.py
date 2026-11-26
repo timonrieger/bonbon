@@ -57,6 +57,7 @@ def _cleanup(user_id: str) -> None:
     # 4. All memberships are gone now, so the users row can go (FK without cascade).
     # Tombstone stays.
     users.delete(user_id)
+    logger.info("Account data deleted", user_id=user_id)
 
 
 @logger.inject_lambda_context
