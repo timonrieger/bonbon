@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from aws_lambda_powertools.event_handler.api_gateway import Router
-from aws_lambda_powertools.event_handler.exceptions import NotFoundError
+from aws_lambda_powertools.event_handler.exceptions import NotFoundError, UnauthorizedError
 from aws_lambda_powertools.event_handler.openapi.types import OpenAPIResponse
 from aws_lambda_powertools.utilities.data_classes import APIGatewayProxyEvent
 
@@ -41,15 +41,34 @@ MEMBERSHIP_RESPONSES: dict[int, OpenAPIResponse] = {
 _synced: dict[str, tuple[str, str | None]] = {}
 
 
+def _claims(router: Router) -> dict:
+    """The verified Cognito ID-token claims of the current request (API Gateway checked the JWT)."""
+    event = APIGatewayProxyEvent(router.current_event.raw_event)
+    return event.request_context.authorizer.claims
+
+
+def user_id_from_token(router: Router) -> str:
+    """The Cognito 'sub' straight from the token, without touching the database.
+
+    For Lambdas outside the VPC (account deletion), which can't reach the database, so can't use
+    current_user_id(): it syncs the user and checks the tombstone, both database calls.
+    """
+    return _claims(router)["sub"]
+
+
 def current_user_id(router: Router) -> str:
     """The Cognito user id ('sub') of the current request. API Gateway already verified the JWT.
 
     Also makes sure the user exists in the users table with the name and e-mail from the ID
     token, before any route writes a membership or receipt that references them.
     """
-    event = APIGatewayProxyEvent(router.current_event.raw_event)
-    claims = event.request_context.authorizer.claims
+    claims = _claims(router)
     user_id: str = claims["sub"]
+    # The account is being deleted (feature 05). Checked on every request, before the _synced
+    # cache, so a token issued before the deletion can't resync the user or act after it.
+    # Disabling the Cognito account doesn't revoke tokens already issued, so this is the gate.
+    if users.is_tombstoned(user_id):
+        raise UnauthorizedError("Account deleted")
     email: str | None = claims.get("email")
     profile = (display_name(claims.get("name"), email), email)
     if _synced.get(user_id) != profile:

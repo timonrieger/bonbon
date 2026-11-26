@@ -58,6 +58,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(reports, "monthly", fake.monthly_report)
     monkeypatch.setattr(reports, "trend", fake.spending_trend)
     monkeypatch.setattr(users, "sync", fake.sync_user)
+    monkeypatch.setattr(users, "is_tombstoned", fake.is_tombstoned)
+    monkeypatch.setattr(users, "tombstone", fake.tombstone)
     # Every test starts with an empty per-container cache, like a cold start.
     monkeypatch.setattr(auth, "_synced", {})
     return fake
