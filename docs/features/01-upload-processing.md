@@ -59,6 +59,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 - Dev-only Textract mock (#35): with the stack parameter `TextractMock=1`, `process_receipt.py` returns a stored real `AnalyzeExpense` response (`src/bonbon/receipts/mock_data/textract_migros.json`) instead of calling Textract, after a configurable delay (`TextractMockDelayMs`, default 3300 ms) that imitates the real latency. No Textract cost, a realistic payload for the result worker. Default off (`"0"`), never enabled on prod. Enable it on your dev stack with `sam deploy --config-env dev --parameter-overrides "Stage=dev TextractMock=1 $(.mise/tasks/stack-params.py bonbon-dev)"`.
 - Results queue + DLQ → `handlers/process_result.py` in the VPC (#17, #22): reads the Textract result from S3, writes receipt and items in one transaction (`done`, `duplicate` via file hash, or `failed`), removes the `status=pending` tag. Message format in `bonbon/receipts/results.py`
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
+- `ReceiptsFunction` API reserved concurrency is 20 on dev and 10 on prod; the receipt-processing workers remain at 10.
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
 - S3 gateway endpoint so the database Lambda reaches S3 without NAT, created only if the default VPC has none (#27)
 
@@ -74,6 +75,19 @@ The core of the architecture: the upload ends in S3, everything after runs async
   **not** prove the AWS targets of accepting 200 uploads/minute, processing them within 3 minutes,
   or achieving API p95 below 1 second. It also cannot prove deployed S3/SQS/Lambda behavior,
   CloudWatch metrics, deployed concurrency, Textract's actual throttling behavior, or OCR accuracy.
+
+**AWS E2E load test**:
+
+- Issue #35 adds a separate runner for API-to-S3 upload and receipt-status polling. It is not the
+  local worker test above; its task, profiles, measurements and fail-closed live-safety checks are
+  documented in [the E2E load-test guide](../guides/e2e-load-test.md).
+- AWS E2E load tests on 2026-11-27 met the Normal and Peak performance targets with the Textract
+  mock enabled: Normal E2E p95 of 6.96 s, 200 confirmed uploads in 52.07 s, 200 receipts observed
+  as done in 88.24 s, and Peak API p95 of 0.519 s.
+- Both DLQs were empty under the tested mock conditions. Real Textract throttling remains
+  unverified. See the [E2E load-test results](../guides/e2e-load-test-results.md) for the full
+  results, optimization process and limitations.
+- The synthetic PNGs exercise the processing path, not OCR quality.
 
 ## Verification
 

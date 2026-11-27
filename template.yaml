@@ -232,8 +232,9 @@ Resources:
   # One function per domain; routes inside it are handled by Powertools.
   # Every route in the Python router needs a matching event here.
   # Functions that use the database run in the VPC and hold one connection per container.
-  # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
-  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + DeleteCleanup 5 + Migrate 1 = 56.
+  # Keep the sum of their ReservedConcurrentExecutions below max_connections (79):
+  # dev: Households 20 + Receipts 20 + Reports 10 + ProcessResult 10 + DeleteCleanup 5 + Migrate 1 = 66;
+  # prod: Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + DeleteCleanup 5 + Migrate 1 = 56.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -313,7 +314,7 @@ Resources:
       Handler: bonbon.handlers.receipts.handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Timeout: 15
-      ReservedConcurrentExecutions: 10
+      ReservedConcurrentExecutions: !If [IsProd, 10, 20]
       VpcConfig:
         SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
         SubnetIds: !Ref LambdaSubnetIds
@@ -686,6 +687,128 @@ Resources:
           DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbMasterSecret}:SecretString:password}}"
           DB_APP_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
           DB_APP_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${AWS::StackName}-monitoring
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0, "y": 0, "width": 8, "height": 6,
+              "properties": {
+                "title": "API Gateway latency (p95)",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/ApiGateway", "Latency", "ApiName", "${AWS::StackName}", "Stage", "api", {"stat": "p95"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 0, "width": 8, "height": 6,
+              "properties": {
+                "title": "API Gateway requests and errors",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiName", "${AWS::StackName}", "Stage", "api", {"stat": "SampleCount"}],
+                  ["AWS/ApiGateway", "4XXError", "ApiName", "${AWS::StackName}", "Stage", "api", {"stat": "Sum"}],
+                  ["AWS/ApiGateway", "5XXError", "ApiName", "${AWS::StackName}", "Stage", "api", {"stat": "Sum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 0, "width": 8, "height": 6,
+              "properties": {
+                "title": "Worker invocations, errors and throttles",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${ProcessReceiptFunction}", {"stat": "Sum"}],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${ProcessReceiptFunction}", {"stat": "Sum"}],
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${ProcessReceiptFunction}", {"stat": "Sum"}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${ProcessResultFunction}", {"stat": "Sum"}],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${ProcessResultFunction}", {"stat": "Sum"}],
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${ProcessResultFunction}", {"stat": "Sum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 6, "width": 8, "height": 6,
+              "properties": {
+                "title": "Worker duration (p95)",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${ProcessReceiptFunction}", {"stat": "p95"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${ProcessResultFunction}", {"stat": "p95"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 6, "width": 8, "height": 6,
+              "properties": {
+                "title": "Worker concurrent executions",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/Lambda", "ConcurrentExecutions", "FunctionName", "${ProcessReceiptFunction}", {"stat": "Maximum"}],
+                  ["AWS/Lambda", "ConcurrentExecutions", "FunctionName", "${ProcessResultFunction}", {"stat": "Maximum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 6, "width": 8, "height": 6,
+              "properties": {
+                "title": "Work queue visible messages",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ReceiptsQueue.QueueName}", {"stat": "Maximum"}],
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ResultsQueue.QueueName}", {"stat": "Maximum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 12, "width": 8, "height": 6,
+              "properties": {
+                "title": "Work queue oldest message age (seconds)",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${ReceiptsQueue.QueueName}", {"stat": "Maximum"}],
+                  ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${ResultsQueue.QueueName}", {"stat": "Maximum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 12, "width": 8, "height": 6,
+              "properties": {
+                "title": "Dead-letter queue visible messages",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ReceiptsDeadLetterQueue.QueueName}", {"stat": "Maximum"}],
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${ResultsDeadLetterQueue.QueueName}", {"stat": "Maximum"}]
+                ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 12, "width": 8, "height": 6,
+              "properties": {
+                "title": "Textract AnalyzeExpense (account/region-wide; active mock: simulated throttling not reflected)",
+                "view": "timeSeries", "region": "${AWS::Region}", "period": 60,
+                "metrics": [
+                  ["AWS/Textract", "SuccessfulRequestCount", "Operation", "AnalyzeExpense", {"stat": "Sum"}],
+                  ["AWS/Textract", "ThrottledCount", "Operation", "AnalyzeExpense", {"stat": "Sum"}]
+                ]
+              }
+            }
+          ]
+        }
 
   # The built React app (packages/web/dist), on Amplify Hosting (ADR 0008). Prod only.
   # The Learner Lab denies every CloudFront call, so S3 + our own distribution isn't possible.
