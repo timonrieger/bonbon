@@ -94,6 +94,15 @@ def test_prod_database_survives_deletion(template: dict[str, Any]) -> None:
     assert template["Transform"][0] == "AWS::LanguageExtensions"
 
 
+def test_receipt_api_concurrency_is_higher_only_on_dev(template: dict[str, Any]) -> None:
+    resources = template["Resources"]
+    assert resources["ReceiptsFunction"]["Properties"]["ReservedConcurrentExecutions"] == {
+        "!If": ["IsProd", 10, 20]
+    }
+    assert resources["ProcessReceiptFunction"]["Properties"]["ReservedConcurrentExecutions"] == 10
+    assert resources["ProcessResultFunction"]["Properties"]["ReservedConcurrentExecutions"] == 10
+
+
 @pytest.mark.parametrize(
     ("path", "serves_index"),
     [

@@ -9,6 +9,8 @@ verified mock, this runner cannot validate the deployed processing path.
 This is separate from [`mise run load-test`](../features/01-upload-processing.md),
 which runs local worker code with in-memory S3/SQS and a fake database. The E2E runner does not
 assess OCR accuracy: its synthetic PNGs are test inputs, not an OCR-quality dataset.
+Results from the completed AWS runs, including their acceptance criteria and limitations, are
+summarized in [E2E load-test results](./e2e-load-test-results.md).
 
 ## Safe local use
 
@@ -30,7 +32,7 @@ already exist. The runner's available options are:
 | `--profile smoke`, `normal`, or `peak` | Select a test configuration. Required for live mode; dry run defaults to Normal. |
 | `--count N` | Receipt count. Normal may be adjusted; Smoke and Peak profiles are fixed. |
 | `--rate N` | Planned API-POST start rate in starts per second. |
-| `--concurrency N` | Maximum concurrent upload attempts. |
+| `--concurrency N` | Maximum concurrent upload attempts; Peak accepts 10-15 (default 10), other profiles are fixed. |
 | `--acceptance-timeout N` | Acceptance window in seconds. |
 | `--processing-timeout N` | Status-monitor deadline in seconds (default: 180). |
 | `--poll-interval N` | Status polling interval in seconds (default: 1). |
@@ -38,6 +40,7 @@ already exist. The runner's available options are:
 | `--run-id ID` | Optional run identifier; otherwise generated locally. |
 | `--household-id UUID` | Target household; live use only. |
 | `--api-url URL` | API base URL; live use only. |
+| `--token-stdin` | Read one Cognito ID-token JWT from stdin instead of prompting; live use only. |
 | `--output PATH` | Write JSON to a new file. |
 | `--dry-run` | Print a local plan without requesting credentials or performing measurements. |
 | `--confirm-start` | Explicit consent flag; does not override the technical safety gate. |
@@ -54,7 +57,13 @@ These are configured workloads, not demonstrated AWS performance:
 |---|---:|---:|---:|---:|---:|
 | Smoke | 3 | 1/s | 1 | 60 s | Configured monitor timeout |
 | Normal | 20 (provisional) | 1/s | 5 | 60 s | Configured monitor timeout |
-| Peak | 200 | 4/s | 10 | 60 s | 180 s |
+| Peak | 200 | 4/s | 10 (default; up to 15) | 60 s | 180 s |
+
+Live mode only accepts these workload settings; Peak concurrency may be explicitly raised from 10
+to at most 15. All other counts, rates, time limits and profile settings remain fixed. Polling must
+remain at one request per second, request timeout is capped at 10 seconds, and monitoring is capped
+at 180 seconds (Peak requires exactly 180 seconds). Dry runs may still explore other values, but
+those plans are not eligible for live execution.
 
 The local start rate controls client-side API `POST` starts, not server-side Textract calls.
 Uploads are asynchronous and pass through the queue and workers, so the two rates are not
@@ -88,33 +97,52 @@ These are target thresholds, not claims about measured or achieved AWS performan
 
 ## Safety gate and prerequisites
 
-The technical gate for a real AWS run is currently **closed**. The runner cannot establish that
-the selected stack is `bonbon-dev` or that its deployed Textract mock is active, so `--dry-run`
-is the only supported run mode for now. `--confirm-start` does not bypass this gate. No live AWS
-measurements have been collected.
+Every live run requires `--confirm-start` and performs read-only AWS CLI checks before asking for
+the Cognito ID token. It verifies the `bonbon-dev` stack in `us-east-1`, `Stage=dev`,
+`UPDATE_COMPLETE`, and an exact match between `--api-url` and the stack's `ApiUrl` output. It
+resolves the receipt worker's physical function name from the CloudFormation logical resource and
+checks that the deployed function is `Active`, its last update is `Successful`, and its
+`STAGE=dev`, `TEXTRACT_MOCK=1`, and `TEXTRACT_MOCK_DELAY_MS=3300` settings match. Any AWS CLI
+error, missing field, timeout, or mismatch blocks the run without printing AWS output or
+environment variables. The local verification uses only read operations; no deployment or
+configuration changes are made.
 
-Before a future coordinated AWS smoke test, the team must:
+The operator needs an installed, authenticated AWS CLI with permission to call
+`cloudformation:DescribeStacks`, `cloudformation:DescribeStackResources`, and
+`lambda:GetFunctionConfiguration`. These permissions are not established by local tests.
 
-1. Technically verify the `bonbon-dev` stack and the actually deployed Textract mock.
-2. Use a dedicated test household.
-3. Decide on a secure process to obtain and provide a Cognito ID token.
-4. Confirm the receipt-list endpoint returns every relevant test receipt.
-5. Check available AWS permissions and the Learner Lab budget.
-6. Coordinate and review an AWS smoke test before any larger run.
+Create a dedicated household named exactly `BONBON-E2E-LOAD-TEST` and pass its generated UUID as
+`--household-id`. After the AWS checks and token prompt, the runner uses authenticated
+`GET /households` to require an exact ID/name match and `my_role=owner`, then calls
+`GET /households/{household_id}/members` and requires exactly one member. Any API error, malformed
+response, or mismatch blocks live mode before uploads. Keep the household for test data only.
+These preflight requests use a separate client and are excluded from load-test measurements.
 
-The dev/mock verification mechanism is not implemented yet. Do not treat a configured URL,
-manual confirmation, or a passing dry run as evidence that the live target is safe.
+For WSL, set `API_URL` to the verified dev stack output and `HOUSEHOLD_ID` to the dedicated
+household UUID, then paste the ID token into the Windows clipboard:
+
+```sh
+powershell.exe -NoProfile -Command 'Get-Clipboard -Raw' |
+  mise run load-test:e2e --profile smoke --confirm-start \
+    --api-url "$API_URL" --household-id "$HOUSEHOLD_ID" --token-stdin
+```
+
+The runner trims surrounding whitespace and rejects empty or malformed JWT input. It never echoes
+the token; default mode still prompts with `getpass`.
+
+The explicit confirmation flag is still mandatory and cannot bypass either technical check.
+Dry-run and help modes remain offline and do not invoke the AWS CLI or request a token. No live
+load test is run by automated tests; AWS CLI responses are mocked.
 
 ## Known limitations
 
-- No real AWS E2E measurements or dev/mock verification yet.
-- Configurable workload limits have not been added; technical upper bounds must be reviewed
-  before the live safety gate can be opened.
-- Verification of the dedicated test household remains outstanding.
+- The recorded results are historical; the deployed stack configuration must be checked again by
+  the gate for every live run.
 - The monitor does not end early when every planned receipt is definitively known not to have
   uploaded; consider this only if actual use shows a need.
 - The API does not expose `processed_at`; E2E duration ends at the first observed `done`.
-- CloudWatch dashboard and DLQ evaluation are outstanding.
+- DLQ/Textract-throttling evaluation remains manual; Lambda throttles and an empty DLQ do not prove
+  that Textract was not throttled.
 - Dry Run flags a Smoke profile with a non-standard receipt count as unsuitable; a programmatically
   constructed report can still evaluate its functional check for that count. This existing
   difference is retained rather than changing report behavior in this phase.

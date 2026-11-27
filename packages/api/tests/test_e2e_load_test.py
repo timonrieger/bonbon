@@ -5,6 +5,7 @@ import json
 import runpy
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -48,6 +49,7 @@ from run_e2e_load_test import (
     UploadAttemptResult,
     UrllibTransport,
     _NoRedirectHandler,
+    _read_id_token_from_stdin,
     _report_exit_code,
     build_e2e_load_test_report,
     generate_test_receipt,
@@ -62,6 +64,7 @@ API_BASE_URL = "https://api.example.test/api"
 HOUSEHOLD_ID = "00000000-0000-0000-0000-000000000001"
 RECEIPT_ID = "00000000-0000-0000-0000-000000000002"
 ID_TOKEN = "synthetic-id-token"
+VALID_STDIN_ID_TOKEN = ".".join(("test-header", "test-payload", "test-signature"))
 UPLOAD_URL = "https://s3.example.test/upload"
 FILE_BYTES = b"synthetic receipt bytes"
 UPLOAD_HEADERS = {
@@ -81,6 +84,52 @@ class FakeTransport:
         if isinstance(response, Exception):
             raise response
         return response
+
+
+def _successful_live_target_responses() -> list[dict[str, object]]:
+    return [
+        {
+            "Stacks": [
+                {
+                    "StackName": "bonbon-dev",
+                    "StackStatus": "UPDATE_COMPLETE",
+                    "Parameters": [{"ParameterKey": "Stage", "ParameterValue": "dev"}],
+                    "Outputs": [{"OutputKey": "ApiUrl", "OutputValue": API_BASE_URL}],
+                }
+            ]
+        },
+        {
+            "StackResources": [
+                {
+                    "LogicalResourceId": "ProcessReceiptFunction",
+                    "ResourceType": "AWS::Lambda::Function",
+                    "PhysicalResourceId": "synthetic-worker-resource",
+                }
+            ]
+        },
+        {
+            "FunctionName": "synthetic-worker-resource",
+            "State": "Active",
+            "LastUpdateStatus": "Successful",
+            "Environment": {
+                "Variables": {
+                    "STAGE": "dev",
+                    "TEXTRACT_MOCK": "1",
+                    "TEXTRACT_MOCK_DELAY_MS": "3300",
+                    "UNRELATED_SECRET": "must-not-be-printed",
+                }
+            },
+        },
+    ]
+
+
+def _completed_aws_response(payload: dict[str, object]) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["aws"],
+        returncode=0,
+        stdout=json.dumps(payload),
+        stderr="",
+    )
 
 
 class SimulatedResponse:
@@ -462,6 +511,113 @@ def test_create_receipt_sends_expected_body_and_id_token_header() -> None:
     assert result.receipt_id == RECEIPT_ID
     assert result.size_bytes == len(FILE_BYTES)
     assert result.expires_in == 300
+
+
+def test_dedicated_test_household_requires_owner_name_id_and_single_member() -> None:
+    household_response = {
+        "households": [
+            {
+                "id": HOUSEHOLD_ID,
+                "name": "BONBON-E2E-LOAD-TEST",
+                "created_at": "2026-11-27T00:00:00Z",
+                "my_role": "owner",
+            }
+        ]
+    }
+    member = {
+        "user_id": "test-owner",
+        "display_name": "Test Owner",
+        "role": "owner",
+        "joined_at": "2026-11-27T00:00:00Z",
+    }
+    transport = FakeTransport(
+        json_response(household_response),
+        json_response({"members": [member]}),
+    )
+    http_client = client(transport)
+
+    assert http_client.verify_test_household(HOUSEHOLD_ID)
+    assert [request.method for request, _ in transport.requests] == ["GET", "GET"]
+    assert [urlsplit(request.full_url).path for request, _ in transport.requests] == [
+        "/api/households",
+        f"/api/households/{HOUSEHOLD_ID}/members",
+    ]
+    assert all(
+        request_headers(request)["authorization"] == ID_TOKEN for request, _ in transport.requests
+    )
+    assert len(http_client.timings) == 2
+
+
+@pytest.mark.parametrize(
+    ("household_id", "name", "my_role"),
+    [
+        ("00000000-0000-0000-0000-000000000003", "BONBON-E2E-LOAD-TEST", "owner"),
+        (HOUSEHOLD_ID, "Other household", "owner"),
+        (HOUSEHOLD_ID, "BONBON-E2E-LOAD-TEST", "member"),
+    ],
+)
+def test_dedicated_test_household_rejects_mismatched_household(
+    household_id: str, name: str, my_role: str
+) -> None:
+    response = {
+        "households": [
+            {
+                "id": household_id,
+                "name": name,
+                "created_at": "2026-11-27T00:00:00Z",
+                "my_role": my_role,
+            }
+        ]
+    }
+
+    assert not client(FakeTransport(json_response(response))).verify_test_household(HOUSEHOLD_ID)
+
+
+@pytest.mark.parametrize("member_count", [0, 2])
+def test_dedicated_test_household_rejects_wrong_member_count(member_count: int) -> None:
+    household_response = {
+        "households": [
+            {
+                "id": HOUSEHOLD_ID,
+                "name": "BONBON-E2E-LOAD-TEST",
+                "created_at": "2026-11-27T00:00:00Z",
+                "my_role": "owner",
+            }
+        ]
+    }
+    member = {
+        "user_id": "test-owner",
+        "display_name": "Test Owner",
+        "role": "owner",
+        "joined_at": "2026-11-27T00:00:00Z",
+    }
+    transport = FakeTransport(
+        json_response(household_response),
+        json_response({"members": [member] * member_count}),
+    )
+
+    assert not client(transport).verify_test_household(HOUSEHOLD_ID)
+
+
+def test_dedicated_test_household_blocks_when_member_endpoint_fails() -> None:
+    household_response = {
+        "households": [
+            {
+                "id": HOUSEHOLD_ID,
+                "name": "BONBON-E2E-LOAD-TEST",
+                "created_at": "2026-11-27T00:00:00Z",
+                "my_role": "owner",
+            }
+        ]
+    }
+
+    with pytest.raises(HttpStatusError):
+        client(
+            FakeTransport(
+                json_response(household_response),
+                HttpResponse(503, b""),
+            )
+        ).verify_test_household(HOUSEHOLD_ID)
 
 
 def test_upload_uses_backend_headers_bytes_and_actual_content_length_without_token() -> None:
@@ -2716,7 +2872,66 @@ def test_cli_help_exits_without_token_or_network(
         main(["--help"])
 
     assert error.value.code == 0
-    assert "--dry-run" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "--dry-run" in help_text
+    assert "--token-stdin" in help_text
+
+
+def test_stdin_token_strips_surrounding_whitespace_and_line_endings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        e2e_runner.sys,
+        "stdin",
+        io.StringIO(f" \t\r\n{VALID_STDIN_ID_TOKEN}\r\n "),
+    )
+
+    assert _read_id_token_from_stdin() == VALID_STDIN_ID_TOKEN
+
+
+@pytest.mark.parametrize(
+    "stdin_value",
+    ["", " \t\r\n", "not-a-token", f"{VALID_STDIN_ID_TOKEN}\nextra"],
+)
+def test_stdin_token_rejects_empty_or_invalid_input(
+    stdin_value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(e2e_runner.sys, "stdin", io.StringIO(stdin_value))
+
+    with pytest.raises(ClientInputError, match="valid Cognito ID token"):
+        _read_id_token_from_stdin()
+
+
+def test_cli_rejects_invalid_stdin_token_without_echoing_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    invalid_token = "not-a-valid-token"
+    monkeypatch.setattr(e2e_runner.sys, "stdin", io.StringIO(invalid_token))
+    monkeypatch.setattr(e2e_runner, "_require_verified_live_target", lambda _url: None)
+    monkeypatch.setattr(
+        e2e_runner.getpass,
+        "getpass",
+        lambda *_args: pytest.fail("--token-stdin must not invoke getpass."),
+    )
+
+    assert (
+        main(
+            [
+                "--profile",
+                "smoke",
+                "--confirm-start",
+                "--api-url",
+                API_BASE_URL,
+                "--household-id",
+                HOUSEHOLD_ID,
+                "--token-stdin",
+            ]
+        )
+        == EXIT_CONFIGURATION_ERROR
+    )
+    captured = capsys.readouterr()
+    assert invalid_token not in captured.out
+    assert invalid_token not in captured.err
 
 
 def test_cli_without_profile_is_safely_blocked(
@@ -2767,6 +2982,52 @@ def test_cli_dry_run_uses_the_existing_profiles_without_network_or_token(
     assert "No token was requested" in plan["note"]
 
 
+@pytest.mark.parametrize("concurrency", [10, 11, 15])
+def test_peak_dry_run_allows_bounded_concurrency_override(
+    concurrency: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        main(
+            [
+                "--dry-run",
+                "--profile",
+                "peak",
+                "--concurrency",
+                str(concurrency),
+            ]
+        )
+        == EXIT_OK
+    )
+    plan = json.loads(capsys.readouterr().out)
+
+    assert plan["profile"] == "peak"
+    assert plan["profile_matches_target"] is True
+    assert plan["receipt_count"] == 200
+    assert plan["starts_per_second"] == 4.0
+    assert plan["max_concurrency"] == concurrency
+    assert plan["acceptance_timeout_seconds"] == 60.0
+    assert plan["processing_timeout_seconds"] == 180.0
+
+
+@pytest.mark.parametrize("concurrency", [9, 16, 20])
+def test_peak_dry_run_rejects_concurrency_outside_allowed_range(
+    concurrency: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        main(
+            [
+                "--dry-run",
+                "--profile",
+                "peak",
+                "--concurrency",
+                str(concurrency),
+            ]
+        )
+        == EXIT_CONFIGURATION_ERROR
+    )
+    assert "Peak concurrency must be between 10 and 15." in capsys.readouterr().err
+
+
 def test_cli_dry_run_accepts_custom_run_id_and_never_opens_network(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -2779,6 +3040,11 @@ def test_cli_dry_run_accepts_custom_run_id_and_never_opens_network(
         urllib.request.OpenerDirector,
         "open",
         lambda *_args, **_kwargs: pytest.fail("Dry run attempted network access."),
+    )
+    monkeypatch.setattr(
+        e2e_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("Dry run attempted an AWS CLI call."),
     )
 
     assert main(["--dry-run", "--run-id", "dry-run-1"]) == EXIT_OK
@@ -2827,10 +3093,19 @@ def test_cli_rejects_invalid_configuration(
     assert "Configuration error:" in capsys.readouterr().err
 
 
-def test_confirmed_live_mode_stays_blocked_without_dev_and_mock_verification(
+def test_live_mode_blocks_when_mocked_aws_cli_verification_fails(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token_prompts: list[str] = []
+    aws_calls: list[list[str]] = []
+
+    def fail_aws_verification(
+        arguments: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        aws_calls.append(arguments)
+        return subprocess.CompletedProcess(arguments, 255, "", "sensitive AWS CLI error")
+
+    monkeypatch.setattr(e2e_runner.subprocess, "run", fail_aws_verification)
     monkeypatch.setattr(
         e2e_runner.getpass,
         "getpass",
@@ -2850,10 +3125,220 @@ def test_confirmed_live_mode_stays_blocked_without_dev_and_mock_verification(
     )
 
     assert exit_code == EXIT_SAFETY_BLOCKED
+    assert len(aws_calls) == 1
+    assert aws_calls[0][:4] == [
+        "aws",
+        "cloudformation",
+        "describe-stacks",
+        "--stack-name",
+    ]
     assert not token_prompts
     error = capsys.readouterr().err
-    assert "bonbon-dev" in error
-    assert "Textract mock" in error
+    assert "AWS target verification failed" in error
+    assert "sensitive AWS CLI error" not in error
+
+
+def test_aws_cli_target_verification_uses_only_read_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = _successful_live_target_responses()
+    aws_calls: list[list[str]] = []
+
+    def fake_aws(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        aws_calls.append(arguments)
+        return _completed_aws_response(responses.pop(0))
+
+    monkeypatch.setattr(e2e_runner.subprocess, "run", fake_aws)
+
+    e2e_runner._require_verified_live_target(API_BASE_URL)
+
+    assert len(aws_calls) == 3
+    assert [arguments[1:3] for arguments in aws_calls] == [
+        ["cloudformation", "describe-stacks"],
+        ["cloudformation", "describe-stack-resources"],
+        ["lambda", "get-function-configuration"],
+    ]
+    assert all("--region" in arguments and "us-east-1" in arguments for arguments in aws_calls)
+    assert "synthetic-worker-resource" in aws_calls[2]
+
+
+def test_aws_cli_target_verification_rejects_api_url_mismatch_after_stack_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    aws_calls: list[list[str]] = []
+
+    def fake_aws(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        aws_calls.append(arguments)
+        return _completed_aws_response(_successful_live_target_responses()[0])
+
+    monkeypatch.setattr(
+        e2e_runner.subprocess,
+        "run",
+        fake_aws,
+    )
+
+    with pytest.raises(e2e_runner.LiveModeBlockedError, match="API URL"):
+        e2e_runner._require_verified_live_target("https://other.example.test/api")
+    assert len(aws_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        "StackStatus",
+        "stage",
+        "api_url",
+        "State",
+        "LastUpdateStatus",
+        "TEXTRACT_MOCK",
+        "TEXTRACT_MOCK_DELAY_MS",
+    ],
+)
+def test_aws_cli_target_verification_fails_closed_for_mismatched_configuration(
+    invalid_field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    responses = _successful_live_target_responses()
+    stacks = responses[0]["Stacks"]
+    assert isinstance(stacks, list) and isinstance(stacks[0], dict)
+    stack = stacks[0]
+    if invalid_field == "StackStatus":
+        stack["StackStatus"] = "UPDATE_IN_PROGRESS"
+    elif invalid_field == "stage":
+        parameters = stack["Parameters"]
+        assert isinstance(parameters, list) and isinstance(parameters[0], dict)
+        parameters[0]["ParameterValue"] = "prod"
+    elif invalid_field == "api_url":
+        outputs = stack["Outputs"]
+        assert isinstance(outputs, list) and isinstance(outputs[0], dict)
+        outputs[0]["OutputValue"] = "https://other.example.test/api"
+    elif invalid_field == "State":
+        responses[2]["State"] = "Inactive"
+    elif invalid_field == "LastUpdateStatus":
+        responses[2]["LastUpdateStatus"] = "InProgress"
+    else:
+        environment = responses[2]["Environment"]
+        assert isinstance(environment, dict)
+        variables = environment["Variables"]
+        assert isinstance(variables, dict)
+        if invalid_field == "TEXTRACT_MOCK":
+            variables["TEXTRACT_MOCK"] = "0"
+        else:
+            variables.pop("TEXTRACT_MOCK_DELAY_MS")
+
+    def fake_aws(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return _completed_aws_response(responses.pop(0))
+
+    monkeypatch.setattr(e2e_runner.subprocess, "run", fake_aws)
+
+    with pytest.raises(e2e_runner.LiveModeBlockedError):
+        e2e_runner._require_verified_live_target(API_BASE_URL)
+
+
+def test_aws_cli_timeout_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def timeout(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired("aws", 10)
+
+    monkeypatch.setattr(
+        e2e_runner.subprocess,
+        "run",
+        timeout,
+    )
+
+    with pytest.raises(e2e_runner.LiveModeBlockedError, match="AWS target verification failed"):
+        e2e_runner._require_verified_live_target(API_BASE_URL)
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("--count", "21"),
+        ("--rate", "1.1"),
+        ("--concurrency", "6"),
+        ("--acceptance-timeout", "61"),
+        ("--processing-timeout", "181"),
+        ("--poll-interval", "0.5"),
+        ("--request-timeout", "11"),
+    ],
+)
+def test_nonstandard_live_profile_is_blocked_before_aws_or_token(
+    option: str, value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        e2e_runner.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("Nonstandard profile must block before AWS."),
+    )
+    monkeypatch.setattr(
+        e2e_runner.getpass,
+        "getpass",
+        lambda *_args: pytest.fail("Nonstandard profile must not request a token."),
+    )
+
+    assert (
+        main(
+            [
+                "--profile",
+                "normal",
+                option,
+                value,
+                "--confirm-start",
+                "--api-url",
+                API_BASE_URL,
+                "--household-id",
+                HOUSEHOLD_ID,
+            ]
+        )
+        == EXIT_SAFETY_BLOCKED
+    )
+
+
+def test_live_mode_blocks_before_upload_when_test_household_is_unverified(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class UnverifiedHouseholdClient:
+        @staticmethod
+        def _validate_api_base_url(api_url: str) -> str:
+            return E2EHttpClient._validate_api_base_url(api_url)
+
+        def __init__(
+            self,
+            _api_url: str,
+            _token: str,
+            *,
+            timeout_seconds: float,
+            clock: Callable[[], float],
+        ) -> None:
+            assert timeout_seconds == 10.0
+            assert callable(clock)
+
+        @staticmethod
+        def verify_test_household(_household_id: str) -> bool:
+            return False
+
+    monkeypatch.setattr(e2e_runner, "_require_verified_live_target", lambda _url: None)
+    monkeypatch.setattr(e2e_runner, "E2EHttpClient", UnverifiedHouseholdClient)
+    monkeypatch.setattr(e2e_runner.getpass, "getpass", lambda _prompt: ID_TOKEN)
+    monkeypatch.setattr(
+        e2e_runner,
+        "run_e2e_load_test",
+        lambda *_args, **_kwargs: pytest.fail("Unverified household must not receive uploads."),
+    )
+
+    assert (
+        main(
+            [
+                "--profile",
+                "smoke",
+                "--confirm-start",
+                "--api-url",
+                API_BASE_URL,
+                "--household-id",
+                HOUSEHOLD_ID,
+            ]
+        )
+        == EXIT_SAFETY_BLOCKED
+    )
+    assert "dedicated test household" in capsys.readouterr().err.lower()
 
 
 def test_cli_output_file_is_exclusive_and_contains_only_dry_run_report(
@@ -2898,12 +3383,14 @@ def test_cli_output_file_is_exclusive_and_contains_only_dry_run_report(
     assert "Could not write JSON output" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("token_stdin", [False, True])
 def test_cli_full_flow_uses_simulated_client_and_keeps_token_out_of_outputs(
+    token_stdin: bool,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    token = "synthetic-token-must-not-leak"
+    token = VALID_STDIN_ID_TOKEN if token_stdin else "synthetic-token-must-not-leak"
     clock = FakeClock(100.0)
     all_receipts_registered = threading.Event()
     captured: dict[str, object] = {}
@@ -2927,6 +3414,7 @@ def test_cli_full_flow_uses_simulated_client_and_keeps_token_out_of_outputs(
             self.timings: tuple[RequestTiming, ...] = ()
             self.receipt_ids: list[str] = []
             self._lock = threading.Lock()
+            clients.append(self)
 
         def create_receipt(
             self, household_id: str, content_type: str, file_bytes: bytes
@@ -2951,6 +3439,14 @@ def test_cli_full_flow_uses_simulated_client_and_keeps_token_out_of_outputs(
             assert all_receipts_registered.wait(timeout=1.0)
             return receipt_status_map(*((receipt_id, "done") for receipt_id in self.receipt_ids))
 
+        def verify_test_household(self, household_id: str) -> bool:
+            self.timings = (
+                RequestTiming("api", "GET", 0.001, 200, 99.0, 99.001),
+                RequestTiming("api", "GET", 0.001, 200, 99.001, 99.002),
+            )
+            return household_id == HOUSEHOLD_ID
+
+    clients: list[SimulatedHttpClient] = []
     base_monitor = ReceiptStatusMonitor
 
     class SimulatedReceiptStatusMonitor(base_monitor):
@@ -2964,23 +3460,34 @@ def test_cli_full_flow_uses_simulated_client_and_keeps_token_out_of_outputs(
     monkeypatch.setattr(
         e2e_runner,
         "_require_verified_live_target",
-        lambda: None,
+        lambda _api_url: None,
     )
-    monkeypatch.setattr(e2e_runner.getpass, "getpass", lambda _prompt: token)
+    if token_stdin:
+        monkeypatch.setattr(e2e_runner.sys, "stdin", io.StringIO(f"\r\n{token}\r\n"))
+        monkeypatch.setattr(
+            e2e_runner.getpass,
+            "getpass",
+            lambda *_args: pytest.fail("--token-stdin must not invoke getpass."),
+        )
+    else:
+        monkeypatch.setattr(e2e_runner.getpass, "getpass", lambda _prompt: token)
 
     output = tmp_path / "live-report.json"
+    arguments = [
+        "--profile",
+        "smoke",
+        "--confirm-start",
+        "--api-url",
+        API_BASE_URL,
+        "--household-id",
+        HOUSEHOLD_ID,
+        "--output",
+        str(output),
+    ]
+    if token_stdin:
+        arguments.append("--token-stdin")
     exit_code = main(
-        [
-            "--profile",
-            "smoke",
-            "--confirm-start",
-            "--api-url",
-            API_BASE_URL,
-            "--household-id",
-            HOUSEHOLD_ID,
-            "--output",
-            str(output),
-        ],
+        arguments,
         clock=clock,
         sleep=clock.sleep,
     )
@@ -2988,6 +3495,10 @@ def test_cli_full_flow_uses_simulated_client_and_keeps_token_out_of_outputs(
     stdout = capsys.readouterr().out
     report_json = output.read_text(encoding="utf-8")
     assert exit_code == EXIT_OK
+    assert len(clients) == 2
+    assert clients[0] is not clients[1]
+    assert len(clients[0].timings) == 2
+    assert json.loads(report_json)["api_request_metrics"]["all"]["request_count"] == 0
     assert captured["token"] == token
     assert captured["timeout_seconds"] == 10.0
     assert "3/3 S3 uploads confirmed, 3/3 done observed" in stdout

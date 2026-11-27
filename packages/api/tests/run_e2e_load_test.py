@@ -9,6 +9,7 @@ import math
 import re
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -27,6 +28,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request
 from uuid import UUID, uuid4
 
+from bonbon.households.models import HouseholdList, MemberList
 from bonbon.receipts.models import (
     MAX_UPLOAD_BYTES,
     CreateReceiptRequest,
@@ -44,6 +46,7 @@ RequestKind = Literal["api", "s3"]
 TestProfile = Literal["smoke_test", "normal_load", "peak_load"]
 AssessmentStatus = Literal["PASS", "FAIL", "NOT_EVALUATED", "INCONCLUSIVE"]
 _HEADER_NAME_PATTERN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+_ID_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
 
 
 class E2ELoadTestError(Exception):
@@ -968,6 +971,61 @@ class E2EHttpClient:
             self._mark_response_invalid(timing)
             raise
         return receipts
+
+    def verify_test_household(self, household_id: str) -> bool:
+        request = Request(
+            self._api_url("households"),
+            headers={
+                "Authorization": self._id_token,
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        response, timing = self._send("api", "GET", request)
+        if response.status_code != 200:
+            raise HttpStatusError("api", "GET", response.status_code)
+
+        try:
+            household_list = HouseholdList.model_validate(self._decode_json(response.body))
+        except ValidationError:
+            self._mark_response_invalid(timing)
+            raise InvalidResponseError("Household list response is invalid.") from None
+        except InvalidResponseError:
+            self._mark_response_invalid(timing)
+            raise
+        matches = [
+            household
+            for household in household_list.households
+            if (
+                household.id == household_id
+                and household.name == "BONBON-E2E-LOAD-TEST"
+                and household.my_role == "owner"
+            )
+        ]
+        if len(matches) != 1:
+            return False
+
+        members_request = Request(
+            self._api_url(f"households/{quote(household_id, safe='')}/members"),
+            headers={
+                "Authorization": self._id_token,
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        members_response, members_timing = self._send("api", "GET", members_request)
+        if members_response.status_code != 200:
+            raise HttpStatusError("api", "GET", members_response.status_code)
+
+        try:
+            member_list = MemberList.model_validate(self._decode_json(members_response.body))
+        except ValidationError:
+            self._mark_response_invalid(members_timing)
+            raise InvalidResponseError("Household member list response is invalid.") from None
+        except InvalidResponseError:
+            self._mark_response_invalid(members_timing)
+            raise
+        return len(member_list.members) == 1
 
     def _send(
         self, kind: RequestKind, method: str, request: Request
@@ -2654,13 +2712,19 @@ def _build_cli_config(args: argparse.Namespace, profile: str, run_id: str) -> E2
     for argument, field_name in (
         (args.count, "receipt_count"),
         (args.rate, "starts_per_second"),
-        (args.concurrency, "max_concurrency"),
         (args.acceptance_timeout, "acceptance_window_seconds"),
     ):
         if argument is not None and argument != getattr(config, field_name):
             raise ClientInputError(
                 f"The {profile} profile has fixed {field_name.replace('_', ' ')}."
             )
+    if args.concurrency is not None:
+        if profile == "peak":
+            if not 10 <= args.concurrency <= 15:
+                raise ClientInputError("Peak concurrency must be between 10 and 15.")
+            config = replace(config, max_concurrency=args.concurrency)
+        elif args.concurrency != config.max_concurrency:
+            raise ClientInputError(f"The {profile} profile has fixed maximum concurrency.")
     return config
 
 
@@ -2684,20 +2748,32 @@ def _validate_cli_settings(args: argparse.Namespace) -> None:
 
 def _profile_configuration_matches(config: E2ELoadTestConfig) -> bool:
     if config.profile == "smoke_test":
-        return config.receipt_count == 3
+        return (
+            config.receipt_count == 3
+            and config.max_concurrency == 1
+            and config.starts_per_second == 1.0
+            and config.acceptance_window_seconds == 60.0
+        )
     if config.profile == "normal_load":
-        return config.receipt_count == 20
+        return (
+            config.receipt_count == 20
+            and config.max_concurrency == 5
+            and config.starts_per_second == 1.0
+            and config.acceptance_window_seconds == 60.0
+        )
     return (
         config.receipt_count == 200
         and config.starts_per_second == 4.0
-        and config.max_concurrency == 10
+        and 10 <= config.max_concurrency <= 15
         and config.acceptance_window_seconds == 60.0
     )
 
 
 def _profile_matches_target(config: E2ELoadTestConfig, processing_timeout_seconds: float) -> bool:
-    return _profile_configuration_matches(config) and (
-        config.profile != "peak_load" or processing_timeout_seconds == 180.0
+    return (
+        _profile_configuration_matches(config)
+        and processing_timeout_seconds <= 180.0
+        and (config.profile != "peak_load" or processing_timeout_seconds == 180.0)
     )
 
 
@@ -2766,6 +2842,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--household-id")
     parser.add_argument("--api-url")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--token-stdin",
+        action="store_true",
+        help="Read the Cognito ID token from stdin instead of prompting.",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument(
@@ -2776,12 +2857,144 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _require_verified_live_target() -> None:
-    raise LiveModeBlockedError(
-        "Live network mode is disabled: this code cannot technically verify the "
-        "bonbon-dev stack or the deployed Textract mock. HTTPS, a URL, and manual "
-        "confirmation are not sufficient evidence."
+def _read_id_token_from_stdin() -> str:
+    try:
+        token = sys.stdin.read().strip()
+    except OSError, UnicodeError:
+        raise ClientInputError("Could not read a valid Cognito ID token from stdin.") from None
+    if not _ID_TOKEN_PATTERN.fullmatch(token):
+        raise ClientInputError("Stdin must contain one valid Cognito ID token.")
+    return token
+
+
+def _aws_cli_json(*arguments: str) -> dict[str, object]:
+    try:
+        completed = subprocess.run(
+            [
+                "aws",
+                *arguments,
+                "--region",
+                "us-east-1",
+                "--output",
+                "json",
+                "--no-cli-pager",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except OSError, subprocess.SubprocessError:
+        raise LiveModeBlockedError(
+            "AWS target verification failed; live testing is blocked."
+        ) from None
+    if completed.returncode != 0:
+        raise LiveModeBlockedError("AWS target verification failed; live testing is blocked.")
+
+    try:
+        payload = json.loads(completed.stdout)
+    except TypeError, ValueError:
+        raise LiveModeBlockedError(
+            "AWS target verification failed; live testing is blocked."
+        ) from None
+    if not isinstance(payload, dict):
+        raise LiveModeBlockedError("AWS target verification failed; live testing is blocked.")
+    return payload
+
+
+def _require_verified_live_target(api_url: str) -> None:
+    try:
+        requested_api_url = E2EHttpClient._validate_api_base_url(api_url)
+    except ClientInputError:
+        raise LiveModeBlockedError("The API URL does not match the verified dev stack.") from None
+
+    stack_response = _aws_cli_json(
+        "cloudformation",
+        "describe-stacks",
+        "--stack-name",
+        "bonbon-dev",
     )
+    try:
+        stacks = stack_response["Stacks"]
+        if not isinstance(stacks, list) or len(stacks) != 1 or not isinstance(stacks[0], dict):
+            raise ValueError
+        stack = stacks[0]
+        if stack["StackName"] != "bonbon-dev" or stack["StackStatus"] != "UPDATE_COMPLETE":
+            raise ValueError
+        parameters = stack["Parameters"]
+        outputs = stack["Outputs"]
+        if not isinstance(parameters, list) or not isinstance(outputs, list):
+            raise ValueError
+        stage = next(
+            item["ParameterValue"] for item in parameters if item["ParameterKey"] == "Stage"
+        )
+        stack_api_url = next(
+            item["OutputValue"] for item in outputs if item["OutputKey"] == "ApiUrl"
+        )
+        if stage != "dev":
+            raise ValueError
+        if E2EHttpClient._validate_api_base_url(stack_api_url) != requested_api_url:
+            raise LiveModeBlockedError("The API URL does not match the verified dev stack.")
+    except ClientInputError, KeyError, StopIteration, TypeError, ValueError:
+        raise LiveModeBlockedError(
+            "The CloudFormation stack is not the verified bonbon-dev target."
+        ) from None
+
+    resources_response = _aws_cli_json(
+        "cloudformation",
+        "describe-stack-resources",
+        "--stack-name",
+        "bonbon-dev",
+        "--logical-resource-id",
+        "ProcessReceiptFunction",
+    )
+    try:
+        resources = resources_response["StackResources"]
+        if (
+            not isinstance(resources, list)
+            or len(resources) != 1
+            or not isinstance(resources[0], dict)
+        ):
+            raise ValueError
+        resource = resources[0]
+        if (
+            resource["LogicalResourceId"] != "ProcessReceiptFunction"
+            or resource["ResourceType"] != "AWS::Lambda::Function"
+        ):
+            raise ValueError
+        function_name = resource["PhysicalResourceId"]
+        if not isinstance(function_name, str) or not function_name:
+            raise ValueError
+    except KeyError, TypeError, ValueError:
+        raise LiveModeBlockedError("The receipt worker resource could not be verified.") from None
+
+    function_response = _aws_cli_json(
+        "lambda",
+        "get-function-configuration",
+        "--function-name",
+        function_name,
+    )
+    try:
+        environment = function_response["Environment"]
+        if not isinstance(environment, dict):
+            raise ValueError
+        variables = environment["Variables"]
+        if not isinstance(variables, dict):
+            raise ValueError
+        verified = (
+            function_response["FunctionName"] == function_name
+            and function_response["State"] == "Active"
+            and function_response["LastUpdateStatus"] == "Successful"
+            and variables["STAGE"] == "dev"
+            and variables["TEXTRACT_MOCK"] == "1"
+            and variables["TEXTRACT_MOCK_DELAY_MS"] == "3300"
+        )
+    except KeyError, TypeError, ValueError:
+        raise LiveModeBlockedError(
+            "The deployed receipt worker configuration is not verified."
+        ) from None
+    if not verified:
+        raise LiveModeBlockedError("The deployed receipt worker configuration is not verified.")
 
 
 def _report_exit_code(report: E2ELoadTestReport) -> int:
@@ -2834,15 +3047,45 @@ def main(
             )
         if args.household_id is None or args.api_url is None:
             raise ClientInputError("Live mode requires --household-id and --api-url.")
-        _require_verified_live_target()
+        if (
+            not _profile_matches_target(config, args.processing_timeout)
+            or args.poll_interval != 1.0
+            or args.request_timeout > 10.0
+        ):
+            raise LiveModeBlockedError(
+                "Live testing only allows the defined Smoke, Normal, or Peak profile settings."
+            )
+        _require_verified_live_target(args.api_url)
 
-        token = getpass.getpass("Cognito ID token: ")
+        token = (
+            _read_id_token_from_stdin()
+            if args.token_stdin
+            else getpass.getpass("Cognito ID token: ")
+        )
+        household_client = E2EHttpClient(
+            args.api_url,
+            token,
+            timeout_seconds=args.request_timeout,
+            clock=clock,
+        )
+        try:
+            household_verified = household_client.verify_test_household(args.household_id)
+        except E2ELoadTestError:
+            raise LiveModeBlockedError(
+                "Could not verify the dedicated test household through the API."
+            ) from None
+        if not household_verified:
+            raise LiveModeBlockedError(
+                "Dedicated test household must be named 'BONBON-E2E-LOAD-TEST', be caller-owned, "
+                "and have exactly one member."
+            )
         http_client = E2EHttpClient(
             args.api_url,
             token,
             timeout_seconds=args.request_timeout,
             clock=clock,
         )
+        del household_client
         del token
         report = run_e2e_load_test(
             config,

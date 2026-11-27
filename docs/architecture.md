@@ -48,7 +48,7 @@ flowchart LR
 | Account deletion queue + worker | implemented (#65, #66) | @Dam-Mil |
 | Frontend hosting on Amplify Hosting, `WebUrl` output, `mise run deploy:web` ([0008](decisions/0008-frontend-on-amplify-hosting.md): CloudFront is blocked in the Learner Lab) | implemented (prod stack only) | @timonrieger |
 | CloudWatch alarms | planned | @schmid277 |
-| CloudWatch dashboard (Issue #35) | defined in the template; not deployed | @schmid277 |
+| CloudWatch dashboard (Issue #35) | implemented and deployed to dev; verified during AWS E2E load tests | @schmid277 |
 
 Update the status column when something lands.
 
