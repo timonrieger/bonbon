@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { createHousehold, joinHousehold, listHouseholds } from '@/api';
 import { useSessionMutation } from '@/components/AuthenticatedSession';
+import { buttonStyles } from '@/components/buttonStyles';
 import { householdRoleLabel } from '@/householdRoleLabel';
 
 function joinErrorMessage(error: Error) {
@@ -117,7 +118,7 @@ export function HomePage() {
           <button
             type="submit"
             disabled={join.isPending || code.trim() === ''}
-            className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+            className={buttonStyles.primary}
           >
             {join.isPending ? 'Wird beigetreten…' : 'Beitreten'}
           </button>
@@ -134,7 +135,7 @@ export function HomePage() {
           Haushalt erstellen
         </h2>
         <form
-          className="flex gap-2"
+          className="flex flex-col gap-2 sm:flex-row"
           onSubmit={(e) => {
             e.preventDefault();
             create.mutate(name.trim());
@@ -149,7 +150,7 @@ export function HomePage() {
           <button
             type="submit"
             disabled={create.isPending || name.trim() === ''}
-            className="rounded bg-black px-4 py-2 text-white"
+            className={buttonStyles.primary}
           >
             Haushalt erstellen
           </button>
