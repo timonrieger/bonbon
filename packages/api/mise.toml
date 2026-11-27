@@ -17,6 +17,12 @@ description = "Run backend tests (AWS is mocked with moto, no account needed)"
 run = "uv run python tests/run_load_test.py"
 description = "Run the local receipt-processing load test without AWS"
 
+[tasks."load-test:e2e"]
+run = "uv run python tests/run_e2e_load_test.py"
+raw_args = true
+quiet = true
+description = "Prepare or run the AWS end-to-end receipt load test"
+
 [tasks.openapi]
 run = "uv run python -m bonbon.openapi > openapi.json"
 description = "Write openapi.json from the Powertools routes"

@@ -74,6 +74,14 @@ The core of the architecture: the upload ends in S3, everything after runs async
   or achieving API p95 below 1 second. It also cannot prove deployed S3/SQS/Lambda behavior,
   CloudWatch metrics, deployed concurrency, Textract's actual throttling behavior, or OCR accuracy.
 
+**AWS E2E load test**:
+
+- Issue #35 adds a separate runner for API-to-S3 upload and receipt-status polling. It is not the
+  local worker test above; its task, profiles, measurements and closed live-safety gate are
+  documented in [the E2E load-test guide](../guides/e2e-load-test.md).
+- No AWS performance result has been established. The synthetic PNGs are for exercising the
+  processing path, not for measuring OCR quality.
+
 ## Verification
 
 - On 2026-11-20, a manual test on the live `bonbon-dev` stack verified receipt upload to S3, automatic refresh of the household receipt list, asynchronous Textract processing, and automatic status polling.

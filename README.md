@@ -18,6 +18,7 @@ Turns photos of Swiss supermarket receipts (Migros, Coop, Aldi, Lidl) into a sha
 mise run dev        # app on localhost:5173 + live backend sync to your dev stack
 mise run check      # everything CI checks, run before committing
 mise run generate   # after changing API routes
+mise run load-test:e2e --help  # E2E load-test options; live mode remains gated
 mise tasks --all    # everything else
 ```
 

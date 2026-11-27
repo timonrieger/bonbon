@@ -10,5 +10,6 @@
 | [guides/setup.md](guides/setup.md) | First-time setup, step by step | Day one |
 | [guides/workflow.md](guides/workflow.md) | Issue → agent → PR → merge | Every task |
 | [guides/deploy.md](guides/deploy.md) | Deploying prod by hand | Infra owner, every release |
+| [guides/e2e-load-test.md](guides/e2e-load-test.md) | AWS end-to-end receipt load-test CLI, profiles and safety gate | Preparing E2E measurements |
 
 These docs are also the raw material for the final report (30 % of the grade). Keep architecture, features and decisions accurate as you go and the report mostly writes itself.
