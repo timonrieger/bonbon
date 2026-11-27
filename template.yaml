@@ -31,6 +31,19 @@ Parameters:
   CreateS3Endpoint:
     Type: String
     AllowedValues: ["true", "false"]
+  # Dev-only Textract mock (#35): "1" makes ProcessReceiptFunction skip the real AnalyzeExpense
+  # call and return a stored response instead. Default "0" (off); only the dev stack sets it to
+  # "1" (see .mise). Never enabled on prod.
+  TextractMock:
+    Type: String
+    AllowedValues: ["0", "1"]
+    Default: "0"
+
+  # Mock delay in milliseconds (#35): how long the mocked AnalyzeExpense call sleeps, to imitate
+  # the real Textract latency. Only used when TextractMock is "1". ~3.3 s by default.
+  TextractMockDelayMs:
+    Type: String
+    Default: "3300"
 
 Conditions:
   CreateS3Endpoint: !Equals [!Ref CreateS3Endpoint, "true"]
@@ -220,7 +233,7 @@ Resources:
   # Every route in the Python router needs a matching event here.
   # Functions that use the database run in the VPC and hold one connection per container.
   # Keep the sum of their ReservedConcurrentExecutions well below max_connections (79):
-  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + Migrate 1 = 51.
+  # today Households 20 + Receipts 10 + Reports 10 + ProcessResult 10 + DeleteCleanup 5 + Migrate 1 = 56.
   HouseholdsFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -478,6 +491,46 @@ Resources:
       QueueName: !Sub bonbon-results-dlq-${Stage}
       MessageRetentionPeriod: 1209600 # 14 days, the maximum
 
+  # Account deletion (feature 05, ADR 0007): DELETE /users/me (outside the VPC) sends the user id
+  # here, the deletion worker consumes it. Written by a LabRole Lambda, so no QueuePolicy needed
+  # (like ResultsQueue).
+  DeletionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-deletion-${Stage}
+      # Longer than the orchestrator Lambda's 120 s timeout, so a message stays invisible for the
+      # whole invocation and SQS doesn't redeliver it while the worker is still running
+      # (nesting: cleanup 60 < lambda read 70 < orchestrator 120 < visibility 180).
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeletionDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  DeletionDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub bonbon-deletion-dlq-${Stage}
+      MessageRetentionPeriod: 1209600 # 14 days, the maximum
+
+  # A deletion job that failed every retry waits in the DLQ for someone to look at it. The alarm
+  # makes that visible in CloudWatch; no action is wired to it (the stack has no SNS topic).
+  DeletionDeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub bonbon-deletion-dlq-${Stage}
+      AlarmDescription: A failed account-deletion job is sitting in the deletion DLQ.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeletionDeadLetterQueue.QueueName
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      TreatMissingData: notBreaching
+
   # A resource policy on the queue, not an IAM policy, so it is allowed in the Learner Lab.
   ReceiptsQueuePolicy:
     Type: AWS::SQS::QueuePolicy
@@ -495,6 +548,71 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Ref AWS::AccountId
 
+  # Account deletion endpoint (feature 05). Outside the VPC, because it calls Cognito and SQS,
+  # which VPC Lambdas can't reach (ADR 0007). No DB_* vars and no VpcConfig: it never touches the
+  # database, so it doesn't count towards the 79-connection limit. The worker (inside the VPC)
+  # does the data cleanup.
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.users.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 15
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          DELETION_QUEUE_URL: !Ref DeletionQueue
+      Events:
+        DeleteAccount:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /users/me
+            Method: DELETE
+
+  # Account deletion worker (feature 05, ADR 0007). Outside the VPC, triggered by the deletion
+  # queue: it invokes the cleanup function (inside the VPC) for the database and S3 work, then
+  # deletes the Cognito account. Timeouts nest (cleanup 60 < lambda read_timeout 70 < this 120 <
+  # queue visibility 180), so a stuck cleanup surfaces as a FunctionError, not a lost message.
+  DeleteAccountFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_account.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 120
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          CLEANUP_FUNCTION_NAME: !Ref DeleteCleanupFunction
+      Events:
+        DeletionJob:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeletionQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # Cleanup function for account deletion (feature 05). Inside the VPC for the database and S3
+  # (gateway endpoint); it can't reach Cognito, so the worker above does that part. Invoked
+  # synchronously by DeleteAccountFunction, so it has no event source of its own. One connection
+  # per container, so its ReservedConcurrentExecutions counts towards the 79-connection limit.
+  DeleteCleanupFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bonbon.handlers.delete_cleanup.handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+      ReservedConcurrentExecutions: 5
+      VpcConfig:
+        SecurityGroupIds: [!GetAtt LambdaSecurityGroup.GroupId]
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt Database.Endpoint.Address
+          DB_NAME: bonbon
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbAppSecret}:SecretString:password}}"
+
   ProcessReceiptFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -509,6 +627,8 @@ Resources:
           # Same value as the queue's maxReceiveCount, so the last-attempt failure message is
           # sent on the delivery that SQS would otherwise drop to the DLQ.
           MAX_RECEIVE_COUNT: !FindInMap [Worker, Receipts, MaxReceiveCount]
+          TEXTRACT_MOCK: !If [IsProd, "0", !Ref TextractMock]
+          TEXTRACT_MOCK_DELAY_MS: !Ref TextractMockDelayMs
       Events:
         ReceiptUploaded:
           Type: SQS

@@ -12,7 +12,9 @@ from bonbon.receipts.storage import PENDING_TAG, bucket_name, receipt_key, resul
 from conftest import LambdaContext
 from fakes import FakeDatabase
 
-MIGROS = json.loads((Path(__file__).parent / "data" / "textract_migros.json").read_text())
+MIGROS = json.loads(
+    (Path(__file__).parents[1] / "src/bonbon/receipts/mock_data/textract_migros.json").read_text()
+)
 HASH = hashlib.sha256(b"photo").hexdigest()
 
 

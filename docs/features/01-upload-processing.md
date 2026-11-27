@@ -56,6 +56,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 - S3 bucket with lifecycle rules, CORS, and object-created → SQS notification (`template.yaml`)
 - Receipts queue + DLQ → `handlers/process_receipt.py`: calls Textract `AnalyzeExpense`, stores the raw JSON under `textract-results/`, sends an `ExtractedResult`/`FailedResult` on the results queue (#41)
+- Dev-only Textract mock (#35): with the stack parameter `TextractMock=1`, `process_receipt.py` returns a stored real `AnalyzeExpense` response (`src/bonbon/receipts/mock_data/textract_migros.json`) instead of calling Textract, after a configurable delay (`TextractMockDelayMs`, default 3300 ms) that imitates the real latency. No Textract cost, a realistic payload for the result worker. Default off (`"0"`), never enabled on prod. Enable it on your dev stack with `sam deploy --config-env dev --parameter-overrides "Stage=dev TextractMock=1 $(.mise/tasks/stack-params.py bonbon-dev)"`.
 - Results queue + DLQ → `handlers/process_result.py` in the VPC (#17, #22): reads the Textract result from S3, writes receipt and items in one transaction (`done`, `duplicate` via file hash, or `failed`), removes the `status=pending` tag. Message format in `bonbon/receipts/results.py`
 - `POST /households/{id}/receipts`: inserts the receipt row and returns a presigned PUT URL (see Notes)
 - `GET /households/{id}/receipts` and `GET /households/{id}/receipts/{id}` read from PostgreSQL (#18)
@@ -64,7 +65,7 @@ The core of the architecture: the upload ends in S3, everything after runs async
 **Local load test**:
 
 - Run `mise run load-test` to simulate 200 receipts through both worker record handlers. The
-  Textract response reuses `packages/api/tests/data/textract_migros.json`; its delay defaults to
+  Textract response reuses `packages/api/src/bonbon/receipts/mock_data/textract_migros.json`; its delay defaults to
   3.3 seconds and can be changed with `BONBON_TEXTRACT_DELAY_SECONDS=1 mise run load-test`.
 - The test uses in-memory S3/SQS substitutes and `FakeDatabase`; it does not create AWS clients
   or call AWS. It reports throughput, total duration, p95 completion time (including local

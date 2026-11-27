@@ -1,5 +1,5 @@
 {
-  "_comment": "Ground truth for textract_migros.json, used by the #24 quality harness (.mise/tasks/quality.py). The worker is correct for an item when parse_expense reads the name and categorize() returns the category listed here. Fill one <name>.expected.json per receipt in tests/data/. 'store'/'purchase_date'/'total_rappen' are what a human reads off the receipt; null means not printed/not legible. The total need not equal the sum of items (discounts, Cumulus, Pfand, rounding) and is not scored against the items.",
+  "_comment": "Ground truth for the fixture in src/bonbon/receipts/mock_data/ , used by the #24 quality harness (.mise/tasks/quality.py). The worker is correct for an item when parse_expense reads the name and categorize() returns the category listed here. Fill one <name>.expected.json per receipt in tests/data/. 'store'/'purchase_date'/'total_rappen' are what a human reads off the receipt; null means not printed/not legible. The total need not equal the sum of items (discounts, Cumulus, Pfand, rounding) and is not scored against the items.",
   "store": "Migros",
   "purchase_date": null,
   "total_rappen": 18570,

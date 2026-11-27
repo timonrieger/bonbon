@@ -182,3 +182,39 @@ def test_permanent_error_fails_immediately_without_retry() -> None:
         "receipt_id": RECEIPT,
         "error": "UnsupportedDocumentException",
     }
+
+
+def test_mock_skips_textract_and_uses_the_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With TEXTRACT_MOCK=1 (#35, dev stack only) the worker returns the stored AnalyzeExpense
+    fixture instead of calling Textract, so the result worker gets a realistic payload at no
+    Textract cost. The real client is never touched, and the configured delay is honoured."""
+    monkeypatch.setenv("TEXTRACT_MOCK", "1")
+    monkeypatch.setenv("TEXTRACT_MOCK_DELAY_MS", "1234")
+    process_receipt._mock_result.cache_clear()
+
+    key = receipt_key(HOUSEHOLD, RECEIPT)
+    _, queue_url = seed_bucket_and_queue(b"receipt-bytes", key)
+
+    # The real Textract client must not be called in mock mode; calling it fails the test.
+    def fail_if_called() -> Any:
+        raise AssertionError("Textract was called although TEXTRACT_MOCK=1")
+
+    monkeypatch.setattr(process_receipt, "_textract", fail_if_called)
+    with patch.object(process_receipt.time, "sleep") as sleep:
+        result = invoke({"Records": [s3_event(key)["Records"][0]]})
+
+    assert result == {"batchItemFailures": []}
+    # The delay imitates real Textract latency: 1234 ms, read from TEXTRACT_MOCK_DELAY_MS.
+    sleep.assert_called_once_with(1.234)
+
+    # The stored result is the fixture, and it flows on to the results queue as an ExtractedResult.
+    stored = json.loads(
+        boto3.client("s3", region_name="us-east-1")
+        .get_object(Bucket=os.environ["RECEIPTS_BUCKET"], Key=result_key(HOUSEHOLD, RECEIPT))[
+            "Body"
+        ]
+        .read()
+    )
+    assert "ExpenseDocuments" in stored
+    message = read_one_message(queue_url)
+    assert message["receipt_id"] == RECEIPT

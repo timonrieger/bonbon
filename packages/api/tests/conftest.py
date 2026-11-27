@@ -46,6 +46,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(households, "create_invite", fake.create_invite)
     monkeypatch.setattr(households, "join", fake.join)
     monkeypatch.setattr(households, "remove_member", fake.remove_member)
+    monkeypatch.setattr(households, "prepare_deletion", fake.prepare_deletion)
+    monkeypatch.setattr(users, "delete", fake.delete_user)
     monkeypatch.setattr(households, "transfer_owner", fake.transfer_owner)
     monkeypatch.setattr(receipts, "create", fake.create_receipt)
     monkeypatch.setattr(receipts, "list_for_household", fake.list_receipts)
@@ -58,6 +60,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> FakeDatabase:
     monkeypatch.setattr(reports, "monthly", fake.monthly_report)
     monkeypatch.setattr(reports, "trend", fake.spending_trend)
     monkeypatch.setattr(users, "sync", fake.sync_user)
+    monkeypatch.setattr(users, "is_tombstoned", fake.is_tombstoned)
+    monkeypatch.setattr(users, "tombstone", fake.tombstone)
     # Every test starts with an empty per-container cache, like a cold start.
     monkeypatch.setattr(auth, "_synced", {})
     return fake

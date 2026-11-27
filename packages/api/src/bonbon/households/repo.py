@@ -211,6 +211,38 @@ def remove_member(
     return False
 
 
+def prepare_deletion(household_id: str, user_id: str) -> bool:
+    """Account deletion step 2 (feature 05): under the household lock, decide whether the user is
+    the only member and, if so, delete the household's invite codes so nobody can join during the
+    slow S3 cleanup. Returns True when the user is the sole member, i.e. the caller must delete
+    the household's S3 files before calling remove_member (which then deletes the household).
+
+    Idempotent: a retry on a household already gone finds no members and returns False, so the
+    caller skips the S3 delete and lets remove_member raise 'not found', which the worker treats
+    as already done.
+    """
+    with db.transaction() as conn:
+        if not conn.run(
+            "SELECT 1 FROM households WHERE id = :id FOR UPDATE", id=UUID(household_id)
+        ):
+            return False
+        members = [
+            row[0]
+            for row in conn.run(
+                "SELECT user_id FROM memberships WHERE household_id = :household_id",
+                household_id=UUID(household_id),
+            )
+        ]
+        sole_member = members == [user_id]
+        if sole_member:
+            # No new members between here and the household delete; the files go next.
+            conn.run(
+                "DELETE FROM invite_codes WHERE household_id = :household_id",
+                household_id=UUID(household_id),
+            )
+        return sole_member
+
+
 def transfer_owner(household_id: str, owner_id: str, new_owner_id: str) -> None:
     """Make another member the owner; the old owner stays as a member.
 
