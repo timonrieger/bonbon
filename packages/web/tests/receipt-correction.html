@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Receipt correction browser tests</title>
+  <div id="app"></div>
+  <pre id="result" class="fixed inset-x-0 bottom-0 z-10 max-h-32 overflow-auto bg-white p-2">PENDING</pre>
+  <script type="module">
+    import { Authenticator } from '@aws-amplify/ui-react';
+    import { useQueryClient } from '@tanstack/react-query';
+    import { Amplify } from 'aws-amplify';
+    import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito';
+    import { createElement, StrictMode } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { MemoryRouter, useNavigate } from 'react-router';
+    import { App } from '@/App';
+    import { defaults, Status } from '@/api';
+    import { AuthenticatedSession } from '@/components/AuthenticatedSession';
+    import { householdAccessKey } from '@/features/households/householdAccess';
+    import '../src/index.css';
+
+    const host = document.querySelector('#app');
+    const report = document.querySelector('#result');
+    const results = [];
+    const userId = 'correction-fixture-member';
+    const clientId = 'fixtureclient';
+    const key = `CognitoIdentityServiceProvider.${clientId}`;
+    const now = Math.floor(Date.now() / 1000);
+    const jwt = `e30.${btoa(JSON.stringify({ sub: userId, 'cognito:username': userId, iat: now, exp: now + 3600 }))}.fixture`;
+    const tokens = new Map([
+      [`${key}.LastAuthUser`, userId],
+      [`${key}.${userId}.accessToken`, jwt],
+      [`${key}.${userId}.idToken`, jwt]
+    ]);
+    Amplify.configure({ Auth: { Cognito: { userPoolId: 'us-east-1_fixture', userPoolClientId: clientId } } });
+    cognitoUserPoolsTokenProvider.setKeyValueStorage({
+      async getItem(name) { return tokens.get(name) ?? null; },
+      async setItem(name, value) { tokens.set(name, value); },
+      async removeItem(name) { tokens.delete(name); },
+      async clear() { tokens.clear(); }
+    });
+
+    const created_at = '2026-11-28T12:00:00Z';
+    const household = { id: 'h', name: 'Fixture household', my_role: 'member', created_at };
+    const basePath = '/households/h/receipts';
+    const statuses = { done: Status.Done, processing: Status.Uploaded, failed: Status.Failed };
+    let membership = true;
+    let patchCount = 0;
+    let detailCount = 0;
+    let store = 'Fixture shop';
+    defaults.baseUrl = 'https://api.invalid';
+    // Keep the generated API and session boundary active while simulating the server.
+    const originalFetch = window.fetch;
+    window.fetch = async (input, init) => {
+      const url = new URL(String(input), location.href);
+      if (url.origin !== defaults.baseUrl) return originalFetch(input, init);
+      assert(new Headers(init.headers).get('Authorization') === jwt, 'Missing fixture session');
+      if (url.pathname === '/households/h') {
+        return membership ? Response.json(household) : Response.json({}, { status: 404 });
+      }
+      if (url.pathname === '/categories') return Response.json({ categories: [] });
+      const id = url.pathname.split('/').at(-1);
+      if (!url.pathname.startsWith(`${basePath}/`) || !Object.hasOwn(statuses, id)) {
+        throw new Error(`Unexpected API path: ${url.pathname}`);
+      }
+      if (init.method === 'PATCH') {
+        patchCount++;
+        assert(membership, 'Tried to save after membership was denied');
+        ({ store } = JSON.parse(init.body));
+      } else {
+        detailCount++;
+        assert(membership, 'Requested receipt after membership was denied');
+      }
+      return Response.json({
+        id, status: statuses[id], store, created_at, purchase_date: null, total_rappen: 1250,
+        uploaded_by_name: 'Other household member', possible_duplicate: false, image_url: '', items: []
+      });
+    };
+
+    let client;
+    let navigate;
+    function Fixture() {
+      client = useQueryClient();
+      navigate = useNavigate();
+      return createElement(App);
+    }
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    async function until(predicate, message, timeout = 5000) {
+      const deadline = Date.now() + timeout;
+      while (!predicate()) {
+        assert(Date.now() < deadline, message);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+    function pass(message) {
+      results.push(message);
+      report.textContent = results.join('\n');
+    }
+    const buttons = () => [...host.querySelectorAll('button')].filter(
+      button => button.textContent === 'Kassenzettel korrigieren'
+    );
+    const form = () => host.querySelector('form[aria-label="Kassenzettel korrigieren"]');
+    const storeField = () => form()?.querySelector('input[type="text"]');
+    const activeCorrection = () => document.activeElement === buttons()[0];
+    const inViewport = element => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= 0 && rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+    };
+    const checkHeader = () => {
+      const heading = host.querySelector('h1');
+      const [button] = buttons();
+      assert(buttons().length === 1 && button.parentElement === heading.parentElement, 'Expected exactly one correction button next to the heading');
+      assert(scrollY === 0 && inViewport(button), 'Correction button is not visible without scrolling');
+      assert(document.documentElement.scrollWidth <= innerWidth, 'Receipt page overflows horizontally');
+      if (innerWidth === 1280) {
+        const title = heading.getBoundingClientRect();
+        const action = button.getBoundingClientRect();
+        assert(action.left >= title.right && Math.abs((action.top + action.bottom) - (title.top + title.bottom)) < 2,
+          'Desktop heading and action are not aligned side by side');
+      }
+    };
+
+    async function run() {
+      createRoot(host).render(createElement(StrictMode, null, createElement(Authenticator, null,
+        createElement(AuthenticatedSession, null,
+          createElement(MemoryRouter, { initialEntries: [`${basePath}/done`] }, createElement(Fixture))
+        )
+      )));
+      await until(() => buttons().length > 0, 'Done receipt did not expose correction');
+      checkHeader();
+      assert(host.textContent.includes('Other household member'), 'Non-uploader fixture did not render');
+      pass(`Header at ${innerWidth}×${innerHeight}, including correction as a non-uploader`);
+
+      report.textContent += '\nREADY: Tab from the household back link to the correction button and press Enter.';
+      host.querySelector('a[href="/households/h"]').focus();
+      let trustedKeyboardActivation = false;
+      buttons()[0].addEventListener('click', event => {
+        trustedKeyboardActivation = event.isTrusted && event.detail === 0;
+      }, { once: true });
+      await until(form, 'Activate the correction button with Tab and Enter', 60000);
+      assert(trustedKeyboardActivation, 'Expected native keyboard activation');
+      assert(buttons().length === 0 && document.activeElement === storeField() && inViewport(storeField()),
+        'Correction form did not receive visible focus or header action stayed visible');
+      form().querySelector('button[type="button"]').click();
+      await until(activeCorrection, 'Cancelling did not return focus to the header action');
+      pass('Keyboard activation, focus transfer and cancel focus restoration');
+
+      buttons()[0].click();
+      await until(storeField, 'Correction form did not reopen');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(storeField(), 'Corrected shop');
+      storeField().dispatchEvent(new Event('input', { bubbles: true }));
+      const submit = form().querySelector('button[type="submit"]');
+      await until(() => !submit.disabled, 'Correction never became saveable');
+      submit.click();
+      await until(() => activeCorrection() && host.textContent.includes('Die Korrekturen wurden gespeichert.'),
+        'Successful save did not return focus to the header action');
+      assert(patchCount === 1 && store === 'Corrected shop', 'Expected a single correction PATCH');
+      pass('Successful save and header focus restoration');
+
+      for (const [id, label] of [['processing', 'In Bearbeitung'], ['failed', 'Fehlgeschlagen']]) {
+        navigate(`${basePath}/${id}`);
+        await until(() => host.querySelector('dd[aria-live]')?.textContent.includes(label), `Did not load ${id}`);
+        assert(buttons().length === 0 && !form(), `Correction was available for ${id}`);
+      }
+      pass('Correction hidden during processing and after failure');
+
+      navigate(`${basePath}/done`);
+      await until(() => buttons().length === 1, 'Expected correction before revocation');
+      membership = false;
+      const accessKey = householdAccessKey('h');
+      await client.invalidateQueries({ queryKey: accessKey });
+      await until(() => host.querySelector('[role="alert"]')?.textContent.includes('Zugriff'), 'Missing access-denied notice');
+      assert(buttons().length === 0 && !form() && !host.textContent.includes(store), 'Revocation retained private correction UI');
+      assert(client.getQueryData(accessKey) === null && client.getQueryData(['receipt', 'h', 'done']) == null,
+        'Revocation retained private cache data');
+
+      const before = detailCount;
+      client.setQueryData(accessKey, household);
+      client.setQueryData(['receipt', 'h', 'failed'], { id: 'failed', status: Status.Done, store: 'Stale private store' });
+      navigate(`${basePath}/failed`);
+      await until(() => client.getQueryData(accessKey) === null, 'Cached household was not rechecked');
+      assert(buttons().length === 0 && !host.textContent.includes('Stale private store') && detailCount === before,
+        'Unverified cached access exposed correction or fetched receipt data');
+      pass('Revoked and initially denied access with cached data');
+    }
+
+    run().then(() => {
+      report.textContent = [`PASS (${results.length} groups)`, ...results].join('\n');
+    }).catch(error => {
+      report.textContent = ['FAIL', ...results, error.stack].join('\n');
+    });
+  </script>
+</html>

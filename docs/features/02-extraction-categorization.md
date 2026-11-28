@@ -22,7 +22,8 @@
   - Each item row edits `name`, `quantity`, `unit_price_rappen`, `amount_rappen` and `category`. The form uses the choices from `listCategories`.
   - Validates fields locally and sends the generated `ReceiptCorrection` shape to `onSave`. Prices are entered in CHF and sent in integer Rappen, including negative amounts.
   - A refetch of the same receipt keeps unsaved edits.
-- `src/pages/ReceiptPage.tsx` mounts the form for processed (`done`) receipts and saves through `updateReceipt`. The response updates the detail cache and invalidates the household's receipt lists, monthly reports and trends.
+- The receipt detail header offers the correction action for accessible, processed (`done`) receipts. It opens the form in the items section and focuses the store field. Cancelling or saving returns focus to the header action.
+- `src/pages/ReceiptPage.tsx` saves through `updateReceipt`. The response updates the detail cache and invalidates the household's receipt lists, monthly reports and trends.
 - Before replacing items, the frontend checks the current item list against the draft's starting snapshot. A write between that check and PATCH can still overwrite a concurrent edit. Closing that window requires a backend version precondition.
 
 ### API (#26)
@@ -76,6 +77,7 @@ brands and product lines such as Ragusa, Twist, Bon Chef, Nivea and Cantadou.
 
 - On 2026-11-20, a separate manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
 - An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
+- For #61, the developer confirmed successful desktop and mobile browser tests, including keyboard activation of the header action. The `packages/web/tests/receipt-correction.html` fixture covers header layout and access for non-uploaders, keyboard activation and focus after cancellation, focus after a successful save, processing and failed states, and denied or revoked household access.
 
 ## Rules
 

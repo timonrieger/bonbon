@@ -371,7 +371,22 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
         <Link to={`/households/${householdId}`} className="text-sm underline">
           Zur Haushaltsseite
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold">Kassenzettel</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold">Kassenzettel</h1>
+          {data && editAllowed && !editing && (
+            <button
+              ref={editButton}
+              type="button"
+              className="max-w-full rounded border px-4 py-2 text-sm"
+              onClick={() => {
+                save.reset();
+                setEditSnapshot(data);
+              }}
+            >
+              Kassenzettel korrigieren
+            </button>
+          )}
+        </div>
       </div>
 
       {access.data !== null && !access.isError && (!accessVerified || receipt.isPending) && (
@@ -495,22 +510,7 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
                 />
               </>
             ) : (
-              <>
-                <ReceiptItems items={data.items} status={data.status} processing={processing} />
-                {editAllowed && (
-                  <button
-                    ref={editButton}
-                    type="button"
-                    className="mt-4 rounded border px-4 py-2 text-sm"
-                    onClick={() => {
-                      save.reset();
-                      setEditSnapshot(data);
-                    }}
-                  >
-                    Kassenzettel korrigieren
-                  </button>
-                )}
-              </>
+              <ReceiptItems items={data.items} status={data.status} processing={processing} />
             )}
           </section>
         </>
