@@ -86,6 +86,34 @@ function ReceiptItems({
   status,
   processing
 }: Pick<ReceiptDetail, 'items' | 'status'> & { processing: boolean }) {
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const [requestedPage, setPage] = useState(1);
+  const page = Math.min(requestedPage, pageCount);
+  // Keep a later refetch from restoring a page that disappeared.
+  if (page !== requestedPage) setPage(page);
+
+  const previousButton = useRef<HTMLButtonElement>(null);
+  const nextButton = useRef<HTMLButtonElement>(null);
+  const boundaryFocus = useRef<HTMLButtonElement>(null);
+
+  useLayoutEffect(() => {
+    boundaryFocus.current?.focus();
+    boundaryFocus.current = null;
+  });
+
+  function changePage(direction: -1 | 1) {
+    const nextPage = page + direction;
+    if (nextPage < 1 || nextPage > pageCount) return;
+    // Keep keyboard navigation on an enabled control at the boundary.
+    if (nextPage === 1 && document.activeElement === previousButton.current) {
+      boundaryFocus.current = nextButton.current;
+    } else if (nextPage === pageCount && document.activeElement === nextButton.current) {
+      boundaryFocus.current = previousButton.current;
+    }
+    setPage(nextPage);
+  }
+
   if (items.length === 0) {
     return (
       <p className="text-sm text-gray-600">
@@ -98,48 +126,81 @@ function ReceiptItems({
     );
   }
 
+  const paginationButtonClass =
+    'rounded border border-gray-300 px-3 py-2 text-sm enabled:hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
-    // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll the table on narrow screens
-    <section className="overflow-x-auto" tabIndex={0} aria-label="Belegpositionen">
-      <table className="w-full text-left text-sm">
-        <thead className="text-gray-600">
-          <tr>
-            <th scope="col" className="p-2">
-              Bezeichnung
-            </th>
-            <th scope="col" className="p-2 text-right">
-              Menge
-            </th>
-            <th scope="col" className="p-2 text-right">
-              Stückpreis
-            </th>
-            <th scope="col" className="p-2 text-right">
-              Betrag
-            </th>
-            <th scope="col" className="p-2">
-              Kategorie
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.position} className="border-t border-gray-200">
-              <th scope="row" className="p-2 font-medium">
-                {item.name || '–'}
+    <>
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard users need to scroll the table on narrow screens */}
+      <section className="overflow-x-auto" tabIndex={0} aria-label="Belegpositionen">
+        <table className="w-full text-left text-sm">
+          <thead className="text-gray-600">
+            <tr>
+              <th scope="col" className="p-2">
+                Bezeichnung
               </th>
-              <td className="p-2 text-right">{item.quantity}</td>
-              <td className="whitespace-nowrap p-2 text-right">
-                {formatRappen(item.unit_price_rappen)}
-              </td>
-              <td className="whitespace-nowrap p-2 text-right">
-                {formatRappen(item.amount_rappen)}
-              </td>
-              <td className="p-2">{item.category || '–'}</td>
+              <th scope="col" className="p-2 text-right">
+                Menge
+              </th>
+              <th scope="col" className="p-2 text-right">
+                Stückpreis
+              </th>
+              <th scope="col" className="p-2 text-right">
+                Betrag
+              </th>
+              <th scope="col" className="p-2">
+                Kategorie
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+          </thead>
+          <tbody>
+            {items.slice((page - 1) * pageSize, page * pageSize).map((item) => (
+              <tr key={item.position} className="border-t border-gray-200">
+                <th scope="row" className="p-2 font-medium">
+                  {item.name || '–'}
+                </th>
+                <td className="p-2 text-right">{item.quantity}</td>
+                <td className="whitespace-nowrap p-2 text-right">
+                  {formatRappen(item.unit_price_rappen)}
+                </td>
+                <td className="whitespace-nowrap p-2 text-right">
+                  {formatRappen(item.amount_rappen)}
+                </td>
+                <td className="p-2">{item.category || '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      {pageCount > 1 && (
+        <nav
+          aria-label="Seitennavigation der Belegpositionen"
+          className="mt-3 flex flex-wrap items-center gap-3"
+        >
+          <button
+            ref={previousButton}
+            type="button"
+            disabled={page === 1}
+            onClick={() => changePage(-1)}
+            className={paginationButtonClass}
+          >
+            Zurück
+          </button>
+          <p aria-live="polite" className="text-center text-sm font-medium">
+            Seite {page} von {pageCount}
+          </p>
+          <button
+            ref={nextButton}
+            type="button"
+            disabled={page === pageCount}
+            onClick={() => changePage(1)}
+            className={paginationButtonClass}
+          >
+            Weiter
+          </button>
+        </nav>
+      )}
+    </>
   );
 }
 
