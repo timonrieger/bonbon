@@ -7,10 +7,10 @@ The core of the architecture: the upload ends in S3, everything after runs async
 ## Done when
 
 - [x] Upload a photo (JPG/PNG) from the household page
-- [ ] Upload a single-page PDF (optional; the API accepts `application/pdf`, the UI doesn't yet)
+- [x] Verify a single-page PDF upload reaches `done` through Bonbon on a dev stack
 - [x] Frontend compresses receipt images before upload (#32). Roughly 300–500 KB is a best-effort target, and 5 MB is the strict upload limit.
 - [x] Upload via presigned URL; file type (JPG, PNG, PDF) and size (max. 5 MB) are limited (`createReceipt`)
-- [ ] PDFs with more than one page are rejected (synchronous `AnalyzeExpense` only accepts single-page documents; a multi-page PDF raises and the receipt ends up `failed`)
+- [x] Verify that the browser rejects multi-page PDFs before creating a receipt
 - [x] Processing runs S3 → SQS → Textract Lambda → results queue → database Lambda ([decisions/0007](../decisions/0007-worker-split-and-db-credentials.md)); tested end to end on a dev stack (#41, #38, #27)
 - [x] Status visible in the app: «In Bearbeitung» (`uploaded`) / «Verarbeitet» (`done`) / «Fehlgeschlagen» (`failed`) / «Duplikat» (`duplicate`)
 - [x] The receipt list and detail view update processing status automatically
@@ -27,13 +27,13 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 **Implemented** (#16):
 
-- `src/components/ReceiptFilePicker.tsx`: file picker with client-side validation
-  - Accepts JPG/PNG only (MIME-type check), rejects all other formats
+- `src/components/ReceiptFilePicker.tsx`: accepts JPG, PNG, and single-page PDF receipts.
+  The picker shows the filename, size, PDF validation progress, and validation errors.
   - Rejects empty files and files larger than 5 MB with a human-readable error message
   - Shows selected filename and size; allows replacing or removing the file
   - Controlled: the parent passes `file` and gets `onChange(file | null)`, so it owns the selection
 - `src/api/receipts.ts` exports `uploadToS3(upload: ReceiptUpload, file: File, signal: AbortSignal): Promise<void>`. It sends the prepared file to `upload.upload_url` with a plain `fetch` PUT, forwards `upload.upload_headers` verbatim, and passes the abort signal. The URL supplies authorization. A non-2xx response rejects the upload.
-- `HouseholdPage.tsx` composes `ReceiptUploadSection` and `HouseholdReceiptList` and coordinates uploads with leaving the household. `useReceiptUpload` owns image preparation and the authenticated `createReceipt` request followed by the direct S3 PUT. `ReceiptUploadSection` renders the picker, progress and per-receipt completion notices.
+- `HouseholdPage.tsx` composes `ReceiptUploadSection` and `HouseholdReceiptList` and coordinates uploads with leaving the household. `useReceiptUpload` owns PDF validation, image preparation, and the authenticated `createReceipt` request followed by the direct S3 PUT. `ReceiptUploadSection` renders the picker, progress and per-receipt completion notices.
 - `src/features/receipts/receiptImage.ts`: validates the original type and size, checks its signature and decodes the image with EXIF orientation. Images up to 500 KiB keep their original bytes. Larger images are candidates for JPEG conversion over a white background. Resizing retains the aspect ratio without upscaling and aims for a 2800 px long edge. The preferred short edge adapts to the original width of narrow receipts so they can still be downscaled without losing too much text detail. There are at most three JPEG encodes, including at most one further resize. The best-effort target allows larger outputs when readability needs more pixels. If re-encoding saves less than 10%, the validated original is used. The picker rejects source files over 5 MB before decoding, and the prepared image must also meet the strict 5 MB upload limit.
 - The upload signs the prepared file's actual size and type. Decode or encode failures show an error before the API creates a receipt. Changing households during preparation or signing out prevents a new upload from starting. The UI shows preparation progress and reports the size reduction after upload. Leaving a household in the same session is blocked until an active upload settles. Cancelling the browser request cannot undo an upload accepted by S3.
 - The authenticated API transport attaches the session's abort signal when requesting the presigned URL. The upload also uses explicit cancellation for local image preparation and the direct S3 PUT.
@@ -46,9 +46,28 @@ The core of the architecture: the upload ends in S3, everything after runs async
 
 **Browser memory:** The 5 MB file limit bounds compressed bytes. Decoding can allocate a much larger bitmap before resizing. Test long and high-resolution receipts on memory-constrained mobile devices.
 
-**Still planned:**
+**PDF support (#59, team decision by Timon):** The browser validates a single page
+with the actual PDF page tree in a dedicated, on-demand `@pdfme/pdf-lib` 6.2.8
+worker. This MIT-licensed parser includes a fix for unbounded growth of
+decoded stream buffers. The browser checks that the final `startxref` and
+`%%EOF` identify a complete cross-reference table and trailer or a complete
+cross-reference stream, including after incremental updates.
+It rejects empty, oversized, encrypted, multi-page, and unparseable files before
+creating a receipt. Missing and generic MIME types are accepted for a `.pdf`
+candidate only after parsing. The worker is terminated when the selection
+changes, the session ends, or the validation deadline expires. The 5 MiB input
+limit and deadline do not guarantee a hard memory bound. These checks detect
+incomplete revisions and invalid page counts. They do not validate every
+object reference or page content, establish PDF conformance or safety, or
+guarantee Textract compatibility.
 
-- PDF support (single-page only; rejected with a clear error message)
+PDFs are uploaded unchanged as `application/pdf`, without image compression,
+conversion, or page splitting. Unsupported documents reaching Textract use the
+existing failure handling. The receipt detail classifies the original through
+the S3 response's Content-Type using a bounded presigned GET. PDFs use the
+browser's native viewer, with a new-tab link and authorized renewal. JPG/PNG
+retain their image preview, including when the MIME request fails. Renewal
+resets the preview while keeping the keyboard control mounted.
 
 ### Backend / infrastructure — @timonrieger, @Dam-Mil
 
@@ -76,6 +95,29 @@ The core of the architecture: the upload ends in S3, everything after runs async
   CloudWatch metrics, deployed concurrency, Textract's actual throttling behavior, or OCR accuracy.
 
 ## Verification
+
+- A direct, unmocked AWS Textract call in `us-east-1` accepted a real single-page
+  PDF through `AnalyzeExpense(Document={"Bytes": pdf})` and returned one expense
+  document.
+- For #59, the developer verified the full Bonbon upload on the AWS dev stack
+  with `TextractMock=0`. A real single-page PDF uploaded successfully, reached
+  `done`, and displayed in the native receipt preview. A multi-page PDF was
+  rejected with the upload button disabled. Stored S3 bytes were not independently
+  compared with the original, and mobile browser rendering was not separately
+  tested.
+- The updated [PDF browser fixture](../../packages/web/tests/receipt-pdf.html)
+  reported `PASS (14 groups)` in the developer's browser. It uses the real PDF
+  parser with simulated API and S3 responses, including a byte-for-byte check of
+  the simulated PDF PUT. Run it with `mise run //packages/web:dev` at
+  `/tests/receipt-pdf.html`. The existing receipt-image and dashboard-access
+  fixtures passed before the latest corrections.
+- `mise run check` passed with 194 backend tests. TypeScript, lint, the production
+  build, and the updated PDF fixture build also passed. Thirteen cases passed
+  directly against the built PDF worker. The production worker measures 532.84 kB
+  before transport compression and loads on demand. The manifest, lockfile, and
+  installed parser agree on `@pdfme/pdf-lib@6.2.8`. The React peer warning from
+  `@xstate/react` and the low-severity `fast-xml-parser` advisory through Amplify
+  Storage were already present on `origin/main`.
 
 - On 2026-11-20, a manual test on the live `bonbon-dev` stack verified receipt upload to S3, automatic refresh of the household receipt list, asynchronous Textract processing, and automatic status polling.
 - The later completion notices (#31) were checked locally in Chromium with mocked responses for success, failure and duplicates, including month changes while processing.

@@ -20,66 +20,13 @@ import {
 } from '@/api/receipts';
 import { useSessionMutation, useSessionSignal } from '@/components/AuthenticatedSession';
 import { ReceiptCorrectionForm } from '@/components/ReceiptCorrectionForm';
+import { ReceiptOriginal } from '@/components/ReceiptOriginal';
 import { ReceiptStatusBadge } from '@/components/ReceiptStatusBadge';
 import {
   handleHouseholdAccessError,
   householdAccessKey
 } from '@/features/households/householdAccess';
 import { useHouseholdAccess } from '@/features/households/useHouseholdAccess';
-
-function isPreviewUrl(url: string): boolean {
-  return URL.canParse(url) && new URL(url).protocol === 'https:';
-}
-
-function ReceiptImage({
-  url,
-  processing,
-  renewing,
-  onRenew
-}: {
-  url: ReceiptDetail['image_url'];
-  processing: boolean;
-  renewing: boolean;
-  onRenew: () => void;
-}) {
-  const [initialUrl] = useState(url);
-  const [loadedUrl, setLoadedUrl] = useState<string>();
-  const [failedUrl, setFailedUrl] = useState<string>();
-  // A poll can issue a fresh signature for the same file. Keep a loaded preview.
-  const previewUrl = loadedUrl ?? (processing ? initialUrl : url);
-
-  return (
-    <div className="flex flex-col items-start gap-2">
-      {failedUrl === previewUrl || !isPreviewUrl(previewUrl) ? (
-        <p className="text-sm text-gray-600">Die Vorschau ist nicht verfügbar.</p>
-      ) : (
-        <img
-          src={previewUrl}
-          alt="Original des Kassenzettels"
-          referrerPolicy="no-referrer"
-          onLoad={() => setLoadedUrl(previewUrl)}
-          onError={() => setFailedUrl(previewUrl)}
-          className="max-h-[36rem] max-w-full rounded object-contain"
-        />
-      )}
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-        {isPreviewUrl(url) && (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="underline">
-            Original öffnen <span className="sr-only">(neuer Tab)</span>
-          </a>
-        )}
-        <button
-          type="button"
-          disabled={renewing}
-          onClick={onRenew}
-          className="underline disabled:opacity-50"
-        >
-          {renewing ? 'Link wird erneuert…' : 'Original-Link erneuern'}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function ReceiptItems({
   items,
@@ -185,6 +132,8 @@ export function ReceiptPage() {
 function ReceiptContent({ householdId, receiptId }: { householdId: string; receiptId: string }) {
   const [editSnapshot, setEditSnapshot] = useState<ReceiptDetail | null>(null);
   const [renewing, setRenewing] = useState(false);
+  const [originalRevision, setOriginalRevision] = useState(0);
+  const renewingOriginal = useRef(false);
   const editing = editSnapshot !== null;
   const submitting = useRef(false);
   const editButton = useRef<HTMLButtonElement>(null);
@@ -443,14 +392,25 @@ function ReceiptContent({ householdId, receiptId }: { householdId: string; recei
             <h2 id="receipt-image-heading" className="mb-3 text-lg font-medium">
               Originalbeleg
             </h2>
-            <ReceiptImage
-              key={`${householdId}/${receiptId}`}
+            <ReceiptOriginal
+              householdId={householdId}
+              receiptId={receiptId}
+              revision={originalRevision}
               url={data.image_url}
               processing={processing}
               renewing={renewing}
               onRenew={() => {
+                if (renewingOriginal.current) return;
+                renewingOriginal.current = true;
                 setRenewing(true);
-                void receipt.refetch({ cancelRefetch: false }).finally(() => setRenewing(false));
+                const signal = getSessionSignal();
+                void receipt.refetch({ cancelRefetch: false }).then((result) => {
+                  if (signal.aborted) return;
+                  if (result.isSuccess && result.data)
+                    setOriginalRevision((current) => current + 1);
+                  renewingOriginal.current = false;
+                  setRenewing(false);
+                });
               }}
             />
           </section>

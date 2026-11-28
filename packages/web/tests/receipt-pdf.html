@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'self'; frame-src 'none'; img-src 'self' data: blob:">
+  <title>PDF receipt browser tests</title>
+  <main id="app"></main>
+  <pre id="result">PENDING</pre>
+  <script type="module">
+    import { Authenticator } from '@aws-amplify/ui-react';
+    import { PDFDocument } from '@pdfme/pdf-lib';
+    import { useQueryClient } from '@tanstack/react-query';
+    import { Amplify } from 'aws-amplify';
+    import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito';
+    import { createElement, StrictMode } from 'react';
+    import { flushSync } from 'react-dom';
+    import { createRoot } from 'react-dom/client';
+    import { MemoryRouter, useNavigate } from 'react-router';
+    import { App } from '@/App';
+    import { ContentType, defaults } from '@/api';
+    import { AuthenticatedSession } from '@/components/AuthenticatedSession';
+    import { validateReceiptPdf } from '@/features/receipts/receiptPdf';
+
+    const host = document.querySelector('#app');
+    const report = document.querySelector('#result');
+    const root = createRoot(host);
+    const pdf = ContentType.ApplicationPdf;
+
+    // Classic xref PDF with independently controlled page-tree metadata.
+    function documentBytes(pages, count = pages, encrypted = false) {
+      const refs = Array.from({ length: pages }, (_, index) => `${index + 3} 0 R`);
+      const page = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> >>';
+      const objects = [
+        '<< /Type /Catalog /Pages 2 0 R >>',
+        `<< /Type /Pages /Kids [${refs.join(' ')}] /Count ${count} >>`,
+        ...refs.map(() => page)
+      ];
+      const fileId = '11111111111111111111111111111111';
+      let trailer = '/Root 1 0 R';
+      if (encrypted) {
+        // Standard Security Handler R2, with user password "user". This blank page has no streams.
+        objects.push('<< /Filter /Standard /V 1 /R 2 /P -4 /O <94e8094419662a774442fb072e3d9f19e9d130ec09a4d0061e78fe920f7ab62f> /U <a591d67b1a282e987007b4d8bf77102e7cb5e255e7d70c1a537bbd15ae74d316> >>');
+        trailer += ` /Encrypt ${objects.length} 0 R /ID [<${fileId}><${fileId}>]`;
+      }
+      let body = '%PDF-1.4\n';
+      const offsets = objects.map((object, index) => {
+        const offset = body.length;
+        body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+        return offset;
+      });
+      const xref = body.length;
+      const entries = offsets.map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('');
+      body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${entries}trailer\n<< /Size ${objects.length + 1} ${trailer} >>\nstartxref\n${xref}\n%%EOF\n`;
+      return { body, xref };
+    }
+
+    function appendSecondPage() {
+      const { body, xref } = documentBytes(1);
+      const updatedTree = '2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n';
+      const secondPage = '4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> >>\nendobj\n';
+      const entry = offset => `${String(offset).padStart(10, '0')} 00000 n \n`;
+      return body + updatedTree + secondPage +
+        `xref\n2 1\n${entry(body.length)}4 1\n${entry(body.length + updatedTree.length)}trailer\n<< /Size 5 /Root 1 0 R /Prev ${xref} >>\nstartxref\n${body.length + updatedTree.length + secondPage.length}\n%%EOF\n`;
+    }
+
+    function appendSinglePageRevision() {
+      const { body, xref } = documentBytes(1);
+      const revised = '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << >> >>\nendobj\n';
+      const entry = `${String(body.length).padStart(10, '0')} 00000 n \n`;
+      return body + revised +
+        `xref\n3 1\n${entry}trailer\n<< /Size 4 /Root 1 0 R /Prev ${xref} >>\nstartxref\n${body.length + revised.length}\n%%EOF\n`;
+    }
+
+    const classic = documentBytes(1);
+    const incremental = appendSinglePageRevision();
+    const damagedRevisions = [
+      classic.body.slice(0, classic.body.lastIndexOf('%%EOF')),
+      classic.body.slice(0, classic.xref),
+      incremental.slice(0, incremental.lastIndexOf('trailer')),
+      incremental.replace('xref\n3 1\n', 'xref\n3 2\n'),
+      incremental.replace(`/Prev ${classic.xref}`, '/Prev 1')
+    ];
+
+    const file = (body, type = pdf, name = 'receipt.pdf') => new File([body], name, { type });
+    const original = file(documentBytes(1).body, '');
+    let cases = 0;
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    function pass(label) {
+      cases++;
+      report.textContent += `\nPASS ${label}`;
+    }
+    const delay = () => new Promise(resolve => setTimeout(resolve, 10));
+    async function until(predicate, message) {
+      const deadline = Date.now() + 12000;
+      while (!predicate()) {
+        assert(Date.now() < deadline, message);
+        await delay();
+      }
+    }
+    async function rejectPdf(candidate, message) {
+      const error = await validateReceiptPdf(candidate, new AbortController().signal).catch(error => error);
+      assert(error?.message.includes(message), `Expected PDF rejection: ${message}`);
+    }
+
+    const userId = 'pdf-test-user';
+    const clientId = 'fixtureclient';
+    const key = `CognitoIdentityServiceProvider.${clientId}`;
+    const now = Math.floor(Date.now() / 1000);
+    const jwt = `e30.${btoa(JSON.stringify({ sub: userId, 'cognito:username': userId, iat: now, exp: now + 3600 }))}.fixture`;
+    const tokens = new Map([
+      [`${key}.LastAuthUser`, userId],
+      [`${key}.${userId}.accessToken`, jwt],
+      [`${key}.${userId}.idToken`, jwt]
+    ]);
+    Amplify.configure({ Auth: { Cognito: { userPoolId: 'us-east-1_fixture', userPoolClientId: clientId } } });
+    cognitoUserPoolsTokenProvider.setKeyValueStorage({
+      async getItem(name) { return tokens.get(name) ?? null; },
+      async setItem(name, value) { tokens.set(name, value); },
+      async removeItem(name) { tokens.delete(name); },
+      async clear() { tokens.clear(); }
+    });
+
+    const s3Origin = 'https://fixture.s3.us-east-1.amazonaws.com';
+    const apiOrigin = 'https://api.invalid';
+    const date = new Date().toISOString();
+    const entries = { pdf, img: ContentType.ImageJpeg, png: ContentType.ImagePng, unknown: 'text/plain' };
+    let membership = true;
+    let expired = false;
+    let failPut = false;
+    let holdProbe;
+    let holdVisibleProbe = false;
+    let holdDetail = false;
+    let releaseDetail;
+    let pdfDetailRequests = 0;
+    let queryClient;
+    let probeSignal;
+    let cancelledBodies = 0;
+    let createRequests = 0;
+    let uploadRequest;
+    let uploaded;
+    let signedHeaders;
+    let navigate;
+    defaults.baseUrl = apiOrigin;
+    const originalFetch = window.fetch;
+    const originalBitmap = window.createImageBitmap;
+    const viewerDescriptor = Object.getOwnPropertyDescriptor(navigator, 'pdfViewerEnabled');
+    Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: true });
+
+    window.fetch = async (input, init = {}) => {
+      const { origin, pathname, searchParams } = new URL(String(input));
+      const headers = new Headers(init.headers);
+      if (origin === s3Origin) {
+        assert(!headers.has('Authorization'), 'S3 received the app token');
+        if (init.method === 'PUT') {
+          assert(headers.get('content-type') === signedHeaders['Content-Type'], 'Incorrect signed MIME');
+          assert(headers.get('x-amz-tagging') === signedHeaders['x-amz-tagging'], 'Missing signed tag');
+          uploaded = new Uint8Array(await init.body.arrayBuffer());
+          return new Response(null, { status: failPut ? 503 : 200 });
+        }
+        assert(headers.get('range') === 'bytes=0-0', 'Unbounded document probe');
+        assert(init.credentials === 'omit' && init.cache === 'no-store' && init.referrerPolicy === 'no-referrer', 'Unsafe probe options');
+        if (pathname === '/probe-fails') throw new TypeError('Fixture probe failure');
+        if (pathname === '/hold' || (pathname === '/pdf' && holdVisibleProbe)) {
+          probeSignal = init.signal;
+          await new Promise(resolve => { holdProbe = resolve; });
+        }
+        if (searchParams.get('expired') === '1') return new Response(null, { status: 403 });
+        const body = new ReadableStream({ cancel() { cancelledBodies++; } });
+        return new Response(body, { headers: { 'Content-Type': entries[pathname.slice(1)] ?? pdf } });
+      }
+      assert(origin === apiOrigin && headers.get('Authorization') === jwt, 'Unexpected API request');
+      if (pathname === '/households/h') {
+        return Response.json({ id: 'h', name: 'Fixture household', my_role: 'owner', created_at: date }, { status: membership ? 200 : 404 });
+      }
+      if (pathname === '/households/h/members') return Response.json({ members: [] });
+      if (pathname === '/households/h/receipts') {
+        if (init.method !== 'POST') return Response.json({ receipts: [] });
+        createRequests++;
+        uploadRequest = JSON.parse(init.body);
+        signedHeaders = { 'Content-Type': uploadRequest.content_type, 'x-amz-tagging': 'status=pending' };
+        return Response.json({ receipt_id: 'pdf', upload_url: `${s3Origin}/upload`, upload_headers: signedHeaders, expires_in: 300 }, { status: 201 });
+      }
+      if (pathname.startsWith('/households/h/receipts/')) {
+        const id = pathname.split('/').at(-1);
+        if (id === 'pdf') {
+          pdfDetailRequests++;
+          if (holdDetail) await new Promise(resolve => { releaseDetail = resolve; });
+        }
+        if (!membership) return Response.json({}, { status: 404 });
+        return Response.json({
+          id, status: 'duplicate', store: null, purchase_date: null, total_rappen: null,
+          uploaded_by_name: null, created_at: date, possible_duplicate: false, items: [],
+          image_url: `${s3Origin}/${id}?expired=${Number(expired)}`
+        });
+      }
+      throw new Error(`Unexpected fixture route ${pathname}`);
+    };
+
+    function Fixture() {
+      navigate = useNavigate();
+      queryClient = useQueryClient();
+      return createElement(App);
+    }
+    const picker = () => host.querySelector('input[type=file]');
+    const uploadButton = () => [...host.querySelectorAll('button')].find(button => button.textContent.trim() === 'Hochladen');
+    const originalLink = () => host.querySelector('a[target="_blank"]');
+    const imagePreview = () => host.querySelector('img[alt="Original des Kassenzettels"]');
+    const renew = () => host.querySelector('[aria-labelledby="receipt-image-heading"] button');
+    const preview = () => host.querySelector('iframe[title="PDF-Vorschau des Kassenzettels"]');
+    const select = candidate => {
+      const transfer = new DataTransfer();
+      transfer.items.add(candidate);
+      picker().files = transfer.files;
+      flushSync(() => picker().dispatchEvent(new Event('change', { bubbles: true })));
+    };
+
+    try {
+      await validateReceiptPdf(original, new AbortController().signal);
+      await validateReceiptPdf(file(documentBytes(1, 99).body, 'application/octet-stream'), new AbortController().signal);
+      const compressed = await PDFDocument.create();
+      compressed.addPage();
+      const compressedBytes = await compressed.save({ useObjectStreams: true });
+      assert(new TextDecoder().decode(compressedBytes).includes('/ObjStm'), 'Compressed fixture lacks an object stream');
+      await validateReceiptPdf(file(compressedBytes), new AbortController().signal);
+      pass('Single page, generic or missing MIME, compressed objects and misleading Count');
+      await validateReceiptPdf(file(`${incremental} \t\r\n\f`), new AbortController().signal);
+      for (const body of damagedRevisions) await rejectPdf(file(body), 'gelesen');
+      pass('Complete final xref table or stream, valid incremental revision and trailing whitespace');
+
+      await rejectPdf(file(documentBytes(2, 1).body), 'nur eine Seite');
+      await rejectPdf(file(appendSecondPage()), 'nur eine Seite');
+      await rejectPdf(file(documentBytes(0).body), 'keine Seite');
+      await rejectPdf(file(''), 'leer');
+      await rejectPdf(file('%PDF-1.7\nmalformed'), 'gelesen');
+      await rejectPdf(file(documentBytes(1, 1, true).body), 'Verschlüsselte');
+      await rejectPdf(file(new Uint8Array(5 * 1024 * 1024 + 1)), 'zu gross');
+      await rejectPdf(file(documentBytes(1).body, ContentType.ImagePng), 'passen nicht');
+      await rejectPdf(file('not a PDF', ''), 'gelesen');
+      pass('Reject invalid, encrypted, oversized and multi-page PDFs, including an incremental update');
+      const controller = new AbortController();
+      const cancelled = validateReceiptPdf(original, controller.signal).catch(error => error);
+      controller.abort();
+      assert((await cancelled)?.name === 'AbortError', 'PDF parsing ignored cancellation');
+      pass('Abort cancels the PDF worker');
+
+      root.render(createElement(StrictMode, null, createElement(Authenticator, null,
+        createElement(AuthenticatedSession, null, createElement(MemoryRouter, { initialEntries: ['/households/h'] }, createElement(Fixture)))
+      )));
+      await until(picker, 'Household app did not mount');
+      select(file(documentBytes(2).body));
+      await until(() => host.textContent.includes('nur eine Seite'), 'Picker accepted two pages');
+      assert(uploadButton().disabled && createRequests === 0, 'Rejected PDF reached createReceipt');
+      for (const body of damagedRevisions) {
+        select(file(body));
+        await until(() => host.textContent.includes('nicht gelesen werden'), 'Incomplete revision passed picker validation');
+        assert(uploadButton().disabled && createRequests === 0 && !uploaded, 'Incomplete PDF reached the API or S3');
+      }
+      select(original);
+      assert(host.textContent.includes('wird geprüft'), 'Validation was not announced');
+      host.querySelector('[aria-label="Ausgewählte Datei entfernen"]').click();
+      await until(() => !uploadButton(), 'Removed PDF remained selected');
+      const image = file('placeholder', ContentType.ImagePng, 'replacement.png');
+      select(original);
+      assert(host.textContent.includes('wird geprüft'), 'Replacement race did not start');
+      select(image);
+      await until(() => host.textContent.includes(image.name) && !uploadButton()?.disabled, 'Image did not replace pending PDF');
+      pass('Picker rejects invalid PDFs and ignores removed or replaced validation results');
+
+      const realWorker = window.Worker;
+      const realSetTimeout = window.setTimeout;
+      let fireDeadline;
+      let expiredWorker;
+      class SilentWorker {
+        constructor() { expiredWorker = this; }
+        postMessage() {}
+        terminate() { this.terminated = true; }
+      }
+      window.Worker = SilentWorker;
+      window.setTimeout = (callback, ms, ...args) => {
+        if (ms === 10000 && !fireDeadline) {
+          fireDeadline = callback;
+          return undefined;
+        }
+        return realSetTimeout(callback, ms, ...args);
+      };
+      try {
+        select(file(classic.body, pdf, 'timeout.pdf'));
+        assert(fireDeadline && expiredWorker, 'The production worker did not register its deadline');
+        fireDeadline();
+        await until(() => host.textContent.includes('PDF-Prüfung dauert zu lange'), 'Timeout error was not announced');
+        assert(expiredWorker.terminated && uploadButton().disabled && createRequests === 0, 'Timeout did not terminate or block upload');
+      } finally {
+        window.Worker = realWorker;
+        window.setTimeout = realSetTimeout;
+      }
+      select(original);
+      expiredWorker.onmessage?.({ data: null });
+      await until(() => uploadButton() && !uploadButton().disabled, 'Re-selected PDF never became ready');
+      assert(!host.textContent.includes('timeout.pdf'), 'Late worker result restored the expired selection');
+
+      window.createImageBitmap = () => { throw new Error('PDF went through image preparation'); };
+      failPut = true;
+      const button = uploadButton();
+      button.click();
+      button.click();
+      await until(() => host.textContent.includes('Upload fehlgeschlagen (503)'), 'Upload failure was not displayed');
+      assert(createRequests === 1 && !uploadButton().disabled, 'Duplicate click or failed upload retry');
+      failPut = false;
+      uploadButton().click();
+      await until(() => host.textContent.includes('als Duplikat erkannt'), 'Duplicate notification was lost');
+      assert(createRequests === 2 && uploadRequest.content_type === pdf && uploadRequest.size_bytes === original.size, 'Incorrect createReceipt arguments');
+      const bytes = new Uint8Array(await original.arrayBuffer());
+      assert(uploaded.length === bytes.length && uploaded.every((byte, index) => byte === bytes[index]), 'The PDF bytes changed');
+      pass('Unchanged PDF PUT, signed MIME, no compression, manual retry and duplicate notification');
+      pass('Deterministic deadline terminates the worker, ignores a late reply and allows a fresh upload');
+
+      window.createImageBitmap = originalBitmap;
+      const canvas = document.createElement('canvas');
+      canvas.width = 8;
+      canvas.height = 8;
+      canvas.getContext('2d').fillRect(0, 0, 8, 8);
+      for (const [mime, extension] of [[ContentType.ImageJpeg, 'jpg'], [ContentType.ImagePng, 'png']]) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, mime));
+        const photo = file(blob, mime, `photo.${extension}`);
+        select(photo);
+        uploadButton().click();
+        await until(() => host.textContent.includes('Kassenzettel erfolgreich hochgeladen') && !uploadButton(), 'Image upload did not complete');
+        const originalPhoto = new Uint8Array(await photo.arrayBuffer());
+        assert(uploadRequest.content_type === mime && uploadRequest.size_bytes === photo.size, 'Image request metadata changed');
+        assert(uploaded.length === originalPhoto.length && uploaded.every((byte, index) => byte === originalPhoto[index]), 'Small image bytes changed');
+      }
+      pass('Existing JPG and PNG preparation and signed uploads');
+
+      await navigate('/households/h/receipts/pdf');
+      await until(preview, 'PDF did not use an iframe');
+      assert(originalLink()?.textContent.includes('PDF öffnen') && originalLink().rel.includes('noreferrer'), 'PDF fallback missing');
+      assert(cancelledBodies > 0, 'Probe response body was not cancelled');
+      // Substitute a local source once the real app has mounted its img.
+      // The fixture CSP prevents any real S3 navigation or image load.
+      function loadFixtureImage(path) {
+        return new Promise(resolve => {
+          const observer = new MutationObserver(() => {
+            const img = imagePreview();
+            if (!img?.src.includes(path)) return;
+            observer.disconnect();
+            img.addEventListener('load', () => {
+              clearTimeout(timeout);
+              resolve(img);
+            }, { once: true });
+            img.src = canvas.toDataURL();
+          });
+          const timeout = setTimeout(() => {
+            observer.disconnect();
+            resolve(null);
+          }, 3000);
+          observer.observe(host, { childList: true, subtree: true });
+        });
+      }
+      for (const id of ['img', 'png']) {
+        const loaded = loadFixtureImage(`/${id}`);
+        await navigate(`/households/h/receipts/${id}`);
+        assert(await loaded, 'Image preview was lost');
+      }
+      await navigate('/households/h/receipts/unknown');
+      await until(() => host.textContent.includes('Vorschau ist nicht verfügbar'), 'Unknown MIME did not show fallback');
+      assert(originalLink() && !preview(), 'Unknown MIME loaded an embedded viewer');
+      pass('PDF iframe, JPG/PNG image elements, fallback and bounded probe');
+
+      const fallbackImage = loadFixtureImage('/probe-fails');
+      await navigate('/households/h/receipts/probe-fails');
+      const fallback = await fallbackImage;
+      assert(fallback && imagePreview() === fallback && !preview() && originalLink(), 'Failed probe did not retain the working image');
+      await navigate('/households/h/receipts/unknown');
+      await until(() => originalLink()?.href.includes('/unknown'), 'Fallback receipt did not unmount');
+      await navigate('/households/h/receipts/probe-fails');
+      await until(() => host.textContent.includes('Vorschau ist nicht verfügbar') && !imagePreview(), 'Failed fallback image did not show its error');
+      assert(originalLink() && !preview(), 'Failed image lost its original link');
+      pass('Failed MIME probe preserves successful image loading and handles image failure');
+
+      expired = true;
+      await navigate('/households/h/receipts/pdf');
+      // MemoryRouter schedules navigation. The previous image can still show the
+      // same fallback message, so require the expired URL of the target receipt.
+      await until(
+        () => originalLink()?.href === `${s3Origin}/pdf?expired=1` &&
+          host.textContent.includes('Vorschau ist nicht verfügbar') && !imagePreview(),
+        'Expired PDF URL did not show fallback'
+      );
+      expired = false;
+      const renewalButton = renew();
+
+      async function startRenewal() {
+        holdDetail = true;
+        releaseDetail = undefined;
+        renewalButton.focus();
+        assert(document.activeElement === renewalButton, 'Renewal button could not receive initial focus');
+        renewalButton.click();
+        await until(() => releaseDetail && renewalButton.getAttribute('aria-disabled') === 'true', 'Renewal did not enter its pending state');
+        assert(renew() === renewalButton && document.activeElement === renewalButton, 'URL renewal lost keyboard focus while pending');
+      }
+
+      function completeRenewal() {
+        holdDetail = false;
+        releaseDetail();
+      }
+
+      const beforeRenewal = pdfDetailRequests;
+      await startRenewal();
+      renewalButton.click();
+      assert(pdfDetailRequests === beforeRenewal + 1, 'Duplicate renewal reached the API');
+      completeRenewal();
+      await until(() => preview() && renewalButton.getAttribute('aria-disabled') === 'false', 'Authorized URL renewal did not restore the PDF iframe');
+      assert(renew() === renewalButton && document.activeElement === renewalButton, 'URL renewal lost keyboard focus');
+
+      const previousFrame = preview();
+      await startRenewal();
+      const linkWhilePending = originalLink();
+      linkWhilePending.focus();
+      completeRenewal();
+      await until(() => preview() && preview() !== previousFrame && renewalButton.getAttribute('aria-disabled') === 'false', 'Second authorized renewal did not refresh the PDF iframe');
+      assert(document.activeElement === originalLink(), 'Renewal stole focus back after the user moved it');
+      pass('Authorized URL renewal keeps the focused control mounted');
+      Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: false });
+      await navigate('/households/h/receipts/img');
+      await until(() => originalLink()?.href.includes('/img'), 'Image receipt did not replace the PDF');
+      await navigate('/households/h/receipts/pdf');
+      await until(() => host.textContent.includes('Öffne das PDF in einem neuen Tab.'), 'Missing fallback without native viewer');
+      assert(originalLink() && !preview(), 'Unsupported browser tried to embed PDF');
+      pass('Expired URL renewal and fallback without an embedded viewer');
+
+      Object.defineProperty(navigator, 'pdfViewerEnabled', { configurable: true, value: true });
+      await navigate('/households/h/receipts/img');
+      await until(() => originalLink()?.href.includes('/img'), 'Image receipt did not replace the PDF');
+      await navigate('/households/h/receipts/pdf');
+      await until(preview, 'Authorized PDF was not visible before revocation');
+      holdVisibleProbe = true;
+      const probeKey = ['receipt', 'h', 'pdf', 'originalType'];
+      void queryClient.refetchQueries({ queryKey: probeKey });
+      await until(() => holdProbe, 'A background probe was not in flight');
+      assert(preview() && originalLink(), 'Background request unexpectedly hid the authorized PDF');
+      const householdsKey = ['households', userId];
+      const otherReceiptKey = ['receipt', 'other', 'retained'];
+      queryClient.setQueryData(householdsKey, { households: [{ id: 'h' }, { id: 'other' }] });
+      queryClient.setQueryData(otherReceiptKey, { id: 'retained' });
+      membership = false;
+      await queryClient.refetchQueries({ queryKey: ['householdAccess', 'h'], exact: true });
+      await until(() => !preview() && !originalLink(), 'Revocation left the visible PDF or private link mounted');
+      assert(probeSignal.aborted, 'Revocation did not cancel the pending probe');
+      assert(queryClient.getQueryData(['householdAccess', 'h']) === null, 'Canonical household denial was lost');
+      assert(queryClient.getQueryCache().findAll({ queryKey: ['receipt', 'h'] }).every(query => query.state.data == null), 'Revocation left private receipt data cached');
+      assert(queryClient.getQueryData(householdsKey)?.households.map(household => household.id).join() === 'other', 'Household cache kept denied data or lost valid data');
+      assert(queryClient.getQueryData(otherReceiptKey)?.id === 'retained', 'Revocation cleared another household');
+      const previousCancelledBodies = cancelledBodies;
+      holdProbe();
+      await until(() => cancelledBodies > previousCancelledBodies, 'Late probe did not settle');
+      assert(!preview() && !originalLink(), 'Late probe restored the revoked PDF');
+      holdVisibleProbe = false;
+      holdProbe = undefined;
+      membership = true;
+      pass('Revoking access removes a visible PDF, evicts private cache and discards a late probe');
+
+      await navigate('/households/h/receipts/hold');
+      await until(() => holdProbe, 'Stale-probe test did not start');
+      const nextImage = loadFixtureImage('/img');
+      await navigate('/households/h/receipts/img');
+      await until(() => probeSignal.aborted, 'Receipt navigation left its old probe active');
+      holdProbe();
+      assert(await nextImage, 'Stale probe replaced current receipt');
+      membership = false;
+      await navigate('/households/h/receipts/pdf');
+      await until(() => host.textContent.includes('Zugriff auf diesen Haushalt'), 'Lost household access was not detected');
+      assert(!originalLink() && !preview(), 'Denied household retained a viewer or link');
+      membership = true;
+      await navigate('/households/h');
+      await until(picker, 'Household did not reopen');
+      select(original);
+      assert(host.textContent.includes('wird geprüft'), 'Session cancellation test did not start validation');
+      holdProbe = undefined;
+      await navigate('/households/h/receipts/hold');
+      await until(() => holdProbe, 'Session-probe test did not start');
+      window.dispatchEvent(new StorageEvent('storage', { key: null, storageArea: window.localStorage }));
+      await until(() => probeSignal.aborted && !originalLink(), 'Session change did not remove private preview');
+      holdProbe();
+      pass('Receipt navigation, household denial and session invalidation isolate the preview');
+      report.textContent = report.textContent.replace('PENDING', `PASS (${cases} groups)`);
+    } catch (error) {
+      report.textContent += `\nFAIL: ${error.message}`;
+      throw error;
+    } finally {
+      root.unmount();
+      window.fetch = originalFetch;
+      window.createImageBitmap = originalBitmap;
+      if (viewerDescriptor) Object.defineProperty(navigator, 'pdfViewerEnabled', viewerDescriptor);
+      else delete navigator.pdfViewerEnabled;
+    }
+  </script>
+</html>
