@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>Account deletion browser tests</title>
+  <div id="app"></div>
+  <pre id="result">PENDING</pre>
+  <script type="module">
+    import { Amplify } from 'aws-amplify';
+    import { cognitoUserPoolsTokenProvider } from 'aws-amplify/auth/cognito';
+    import { Hub } from 'aws-amplify/utils';
+    import { createElement, StrictMode } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { Bonbon } from '@/App';
+    import { defaults, MyRole, Role } from '@/api';
+
+    const host = document.querySelector('#app');
+    const report = document.querySelector('#result');
+    const account = 'fixture-user';
+    const clientId = 'fixtureclient';
+    const tokenKey = `CognitoIdentityServiceProvider.${clientId}`;
+    const storage = new Map();
+    const now = Math.floor(Date.now() / 1000);
+    let jwt;
+    function seedSession(userId) {
+      const claims = { sub: userId, 'cognito:username': userId, iat: now, exp: now + 3600 };
+      jwt = `e30.${btoa(JSON.stringify(claims))}.fixture`;
+      storage.set(`${tokenKey}.LastAuthUser`, userId);
+      storage.set(`${tokenKey}.${userId}.accessToken`, jwt);
+      storage.set(`${tokenKey}.${userId}.idToken`, jwt);
+    }
+
+    Amplify.configure({ Auth: { Cognito: { userPoolId: 'us-east-1_fixture', userPoolClientId: clientId } } });
+    cognitoUserPoolsTokenProvider.setKeyValueStorage({
+      async getItem(key) { return storage.get(key) ?? null; },
+      async setItem(key, value) { storage.set(key, value); },
+      async removeItem(key) { storage.delete(key); },
+      async clear() { storage.clear(); }
+    });
+
+    const created_at = '2026-01-01T00:00:00Z';
+    const own = { user_id: account, display_name: 'Test', role: Role.Owner, joined_at: created_at };
+    const other = { user_id: 'other', display_name: 'Other', role: Role.Member, joined_at: '2026-01-02T00:00:00Z' };
+    const households = [
+      { id: 'sole', name: 'Einzelhaushalt', my_role: MyRole.Owner, created_at },
+      { id: 'shared', name: 'Gemeinsamer Haushalt', my_role: MyRole.Member, created_at },
+      { id: 'owned', name: 'Eigener geteilter Haushalt', my_role: MyRole.Owner, created_at }
+    ];
+    const memberLists = {
+      sole: [own],
+      shared: [{ ...other, role: Role.Owner }, { ...own, role: Role.Member }],
+      owned: [own, other]
+    };
+    let listed = households;
+    let membersStatus = 200;
+    let revokeSoleMembership = false;
+    let holdHouseholdRefresh = false;
+    let releaseHouseholdRefresh;
+    let deleteResponse;
+    let requests = 0;
+    let deletionSignal;
+    let checks = 0;
+    let root;
+    const originalFetch = window.fetch;
+    const originalSetTimeout = window.setTimeout;
+    let accelerateDeadline = false;
+    window.setTimeout = (callback, delay, ...args) =>
+      originalSetTimeout(callback, accelerateDeadline && delay === 20000 ? 200 : delay, ...args);
+    defaults.baseUrl = 'https://api.invalid';
+
+    window.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      // Reject every unmocked request, including Cognito and any configured API host.
+      if (url.origin !== 'https://api.invalid') throw new Error('Unexpected external request');
+      if (new Headers(init?.headers).get('Authorization') !== jwt) {
+        throw new Error('Missing fixture session token');
+      }
+      if (url.pathname === '/households') {
+        if (holdHouseholdRefresh) {
+          await new Promise(resolve => { releaseHouseholdRefresh = resolve; });
+        }
+        return Response.json({ households: listed });
+      }
+      if (url.pathname === '/households/sole') return Response.json(households[0]);
+      if (url.pathname === '/households/sole/receipts') return Response.json({ receipts: [] });
+      const match = url.pathname.match(/^\/households\/([^/]+)\/members$/);
+      if (match) {
+        if (match[1] === 'sole' && revokeSoleMembership) {
+          listed = households.slice(1);
+          holdHouseholdRefresh = true;
+          return new Response(null, { status: 404 });
+        }
+        return Response.json({ members: memberLists[match[1]] }, { status: membersStatus });
+      }
+      if (url.pathname === '/users/me' && init.method === 'DELETE') {
+        requests++;
+        deletionSignal = init.signal;
+        return deleteResponse(init.signal);
+      }
+      throw new Error(`Unexpected API request ${url.pathname}`);
+    };
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+
+    async function until(predicate, message) {
+      for (let attempt = 0; attempt < 1200; attempt++) {
+        if (predicate()) return;
+        await new Promise(resolve => originalSetTimeout(resolve, 10));
+      }
+      throw new Error(message);
+    }
+
+    function passed(name) {
+      checks++;
+      report.textContent += `\nPASS ${name}`;
+    }
+
+    const dialog = () => host.querySelector('dialog[open]');
+    const button = (label, inElement = host) =>
+      [...(inElement?.querySelectorAll('button') ?? [])].find(node => node.textContent.trim() === label);
+    const trigger = () => button('Konto löschen');
+    const confirm = () => button('Konto endgültig löschen', dialog());
+    const cancel = () => button('Abbrechen', dialog());
+    const checkbox = () => dialog()?.querySelector('input[type=checkbox]');
+    const dialogText = () => dialog()?.textContent ?? '';
+    const accepted = () => host.textContent.includes('Dein Löschauftrag wurde angenommen.');
+    const cancelFromKeyboard = () => dialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+    const abortable = signal => new Promise((_, reject) => {
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+
+    async function mount() {
+      seedSession(account);
+      root = createRoot(host);
+      root.render(createElement(StrictMode, null, createElement(Bonbon)));
+      await until(trigger, 'Authenticated app did not mount');
+    }
+
+    async function open() {
+      trigger().click();
+      await until(() => checkbox() && !checkbox().disabled, 'Preview did not become ready');
+    }
+
+    try {
+      await mount();
+      await open();
+      assert(confirm().disabled && !checkbox().checked && requests === 0, 'Confirmation gate missing');
+      assert(document.activeElement === cancel(), 'Dialog should focus the cancel action');
+      const descriptions = new Map([...dialog().querySelectorAll('li')].map(li => [li.querySelector('strong')?.textContent, li.textContent]));
+      const sole = descriptions.get('Einzelhaushalt');
+      const shared = descriptions.get('Gemeinsamer Haushalt');
+      const owned = descriptions.get('Eigener geteilter Haushalt');
+      assert(sole?.includes('mit allen Belegen und Bildern gelöscht'), 'Missing sole-member outcome');
+      assert(shared?.includes('Belege bleiben erhalten') && !shared.includes('Eigentümerrolle'), 'Incorrect shared-member outcome');
+      assert(owned?.includes('Eigentümerrolle') && owned.includes('am längsten'), 'Missing shared-owner outcome');
+      cancelFromKeyboard();
+      await until(() => !dialog(), 'Escape should close the idle modal');
+      assert(document.activeElement === trigger(), 'Focus did not return to the trigger');
+      passed('Household outcomes, explicit confirmation and focus');
+
+      const fixtureUrl = window.location.href;
+      window.history.pushState(null, '', '/households/sole');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      await until(
+        () => host.querySelector('[aria-labelledby="members-heading"]')?.textContent.includes(own.display_name),
+        'Household page did not populate the member cache'
+      );
+      revokeSoleMembership = true;
+      trigger().click();
+      await until(() => releaseHouseholdRefresh, 'Member 404 did not trigger an authoritative list refresh');
+      assert(checkbox().disabled && confirm().disabled, 'Confirmation became available before the refreshed list');
+      await until(
+        () => host.textContent.includes('Dieser Haushalt ist nicht verfügbar.'),
+        'Member 404 did not revoke canonical household access'
+      );
+      assert(!host.querySelector('[aria-labelledby="members-heading"]'), 'Private member data remained visible');
+      holdHouseholdRefresh = false;
+      releaseHouseholdRefresh();
+      await until(() => !checkbox().disabled, 'Fresh accessible household list did not enable confirmation');
+      assert(!dialogText().includes('Einzelhaushalt'), 'The refreshed preview still displayed a denied household');
+      cancel().click();
+      await until(() => !dialog(), 'The preview did not close');
+      window.history.replaceState(null, '', fixtureUrl);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      revokeSoleMembership = false;
+      listed = households;
+      passed('Member 404 evicts cached private data and waits for a fresh household list');
+
+      membersStatus = 503;
+      trigger().click();
+      await until(() => dialogText().includes('nicht vollständig geladen'), 'Missing preview error');
+      assert(confirm().disabled && checkbox().disabled, 'Incomplete preview allowed deletion');
+      membersStatus = 200;
+      button('Vorschau erneut laden', dialog()).click();
+      await until(() => !checkbox().disabled, 'Preview retry failed');
+      cancel().click();
+      await until(() => !dialog(), 'Cancel should close the preview');
+      listed = [];
+      await open();
+      assert(dialogText().includes('keinem Haushalt'), 'Missing empty preview');
+      passed('Preview failure, retry and empty list');
+
+      let respond;
+      deleteResponse = () => new Promise(resolve => { respond = resolve; });
+      checkbox().click();
+      await until(() => !confirm().disabled, 'Checked confirmation did not enable deletion');
+      const action = confirm();
+      action.click();
+      action.click();
+      cancelFromKeyboard();
+      await until(() => requests === 1 && cancel().disabled, 'Pending state not shown');
+      assert(confirm().disabled && checkbox().disabled && dialogText().includes('wird gesendet'), 'Missing submission lock');
+      cancelFromKeyboard();
+      assert(dialog().open, 'Escape closed a pending request');
+      assert(requests === 1, 'Duplicate deletion request');
+      passed('Pending state and duplicate/dismissal prevention');
+
+      respond(new Response(null, { status: 503 }));
+      await until(() => !confirm().disabled, 'HTTP failure did not allow retry');
+      assert(dialogText().includes('konnte nicht bestätigt werden') && !accepted(), 'Incorrect HTTP error handling');
+      deleteResponse = () => Promise.reject(new TypeError('Fixture network failure'));
+      confirm().click();
+      await until(() => dialogText().includes('ist unklar') && !confirm().disabled, 'Missing ambiguous network error');
+      assert(requests === 2, 'HTTP or network failure retried automatically');
+      passed('HTTP and network errors, manual retry only');
+
+      accelerateDeadline = true;
+      deleteResponse = abortable;
+      confirm().click();
+      await until(() => dialogText().includes('zu lange gedauert') && !confirm().disabled, 'Missing timeout error');
+      assert(deletionSignal.aborted && requests === 3, 'Timeout did not abort exactly one attempt');
+      accelerateDeadline = false;
+      passed('Timeout and retry availability');
+
+      deleteResponse = () => Promise.resolve(new Response(null, { status: 200 }));
+      confirm().click();
+      await until(() => dialogText().includes('konnte nicht bestätigt werden') && !confirm().disabled, 'Unexpected success status did not allow retry');
+      assert(requests === 4, 'Expected one request with an unexpected success status');
+      assert(!accepted() && dialog().open, 'Only 202 may end the session');
+      deleteResponse = () => Promise.resolve(new Response(null, { status: 202 }));
+      confirm().click();
+      await until(() => accepted() && !trigger() && !dialog(), 'Acceptance did not survive session teardown');
+      assert(!storage.has(`${tokenKey}.LastAuthUser`) && requests === 5, 'Sign-out did not clear the fixture session');
+      passed('Only HTTP 202 confirms acceptance; sign-out preserves the notice');
+
+      await until(() => host.querySelector('form'), 'The sign-in form did not appear after sign-out');
+      seedSession('next-fixture-user');
+      Hub.dispatch('auth', { event: 'signInWithRedirect' });
+      await until(trigger, 'The next account did not enter an authenticated session');
+      assert(!accepted(), 'The next session inherited the deletion acceptance notice');
+      passed('Starting a new authenticated session clears the previous notice');
+
+      root.unmount();
+      await mount();
+      await open();
+      deleteResponse = abortable;
+      checkbox().click();
+      await until(() => !confirm().disabled, 'Checked confirmation did not enable deletion');
+      confirm().click();
+      await until(() => requests === 6, 'Cancellation test did not submit');
+      window.dispatchEvent(new StorageEvent('storage', { key: null, storageArea: window.localStorage }));
+      await until(() => !dialog() && deletionSignal.aborted, 'Session invalidation did not abort the request');
+      assert(!accepted() && !host.textContent.includes('zu lange gedauert'), 'Session cancellation looked like acceptance or a timeout');
+      passed('Session invalidation aborts a pending request');
+      report.textContent = report.textContent.replace('PENDING', `PASS (${checks} cases)`);
+    } catch (error) {
+      report.textContent = `FAIL after ${checks} cases: ${error.message}\n${report.textContent}`;
+      throw error;
+    } finally {
+      root?.unmount();
+      window.fetch = originalFetch;
+      window.setTimeout = originalSetTimeout;
+    }
+  </script>
+</html>
