@@ -22,6 +22,7 @@
   - Each item row edits `name`, `quantity`, `unit_price_rappen`, `amount_rappen` and `category`. The form uses the choices from `listCategories`.
   - Validates fields locally and sends the generated `ReceiptCorrection` shape to `onSave`. Prices are entered in CHF and sent in integer Rappen, including negative amounts.
   - A refetch of the same receipt keeps unsaved edits.
+  - Correction mode includes every receipt item, regardless of the read-only table pagination (#62).
 - `src/pages/ReceiptPage.tsx` mounts the form for processed (`done`) receipts and saves through `updateReceipt`. The response updates the detail cache and invalidates the household's receipt lists, monthly reports and trends.
 - Before replacing items, the frontend checks the current item list against the draft's starting snapshot. A write between that check and PATCH can still overwrite a concurrent edit. Closing that window requires a backend version precondition.
 
@@ -74,6 +75,7 @@ brands and product lines such as Ragusa, Twist, Bon Chef, Nivea and Cantadou.
 
 ## Verification
 
+- For #62, the desktop and mobile pagination fixture passed the correction scenario starting on page 3. The form showed all 41 items, the PATCH preserved the complete ordered list with the last item corrected, and saving or cancelling returned to page 1. See [dashboard verification](03-dashboard.md#verification).
 - On 2026-11-20, a separate manual test on the live `bonbon-dev` stack verified that a processed Migros receipt showed a purchase date of 09.05.2018 and a total of CHF 26.00. The detail view displayed the original image and extracted items.
 - An item category was corrected through the live PATCH API. The correction persisted after a full browser reload and appeared in the [dashboard](03-dashboard.md#verification).
 
