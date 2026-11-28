@@ -3,7 +3,7 @@ import { ContentType } from '@/api';
 export const RECEIPT_IMAGE_TYPES = [ContentType.ImageJpeg, ContentType.ImagePng] as const;
 type ReceiptImageType = (typeof RECEIPT_IMAGE_TYPES)[number];
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 500 * 1024;
 const TARGET_LONG_EDGE = 2800;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -19,7 +19,7 @@ export function validateReceiptImage(
   file: File
 ): { contentType: ReceiptImageType } | { error: string } {
   const contentType = RECEIPT_IMAGE_TYPES.find((type) => type === file.type);
-  if (!contentType) return { error: 'Nur JPG- und PNG-Dateien sind erlaubt.' };
+  if (!contentType) return { error: 'Erlaubt sind JPG, PNG und einseitige PDFs.' };
   if (file.size === 0) return { error: 'Die Datei ist leer.' };
   if (file.size > MAX_UPLOAD_BYTES) {
     return {

@@ -12,7 +12,16 @@ export function ReceiptUploadSection({
   disabled: boolean;
   workflow: ReturnType<typeof useReceiptUpload>;
 }) {
-  const { file, preparing, upload, trackedUploads, handleUpload, handleFileChange } = workflow;
+  const {
+    file,
+    fileError,
+    validatingPdf,
+    preparing,
+    upload,
+    trackedUploads,
+    handleUpload,
+    handleFileChange
+  } = workflow;
 
   return (
     <section aria-labelledby="upload-heading">
@@ -20,13 +29,19 @@ export function ReceiptUploadSection({
         Kassenzettel hochladen
       </h2>
 
-      <ReceiptFilePicker file={file} onChange={handleFileChange} disabled={disabled} />
+      <ReceiptFilePicker
+        file={file}
+        onChange={(next) => void handleFileChange(next)}
+        disabled={disabled}
+        error={fileError}
+        validating={validatingPdf}
+      />
 
       {file && (
         <button
           type="button"
           onClick={handleUpload}
-          disabled={disabled}
+          disabled={disabled || validatingPdf || Boolean(fileError)}
           className="mt-3 w-full rounded bg-black px-4 py-2 text-sm text-white sm:w-auto disabled:opacity-50"
         >
           {upload.isPending ? 'Upload läuft…' : 'Hochladen'}
